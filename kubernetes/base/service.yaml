@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-api
+  namespace: fds
+  labels:
+    app: transaction-api
+spec:
+  type: ClusterIP
+  selector:
+    app: transaction-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fds-engine
+  namespace: fds
+  labels:
+    app: fds-engine
+spec:
+  # 내부 전용 — Internal Contract §1: 외부 미노출
+  type: ClusterIP
+  selector:
+    app: fds-engine
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8001

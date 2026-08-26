@@ -1,0 +1,145 @@
+# ============================================================
+# 전제: edge01(.50), db01(.55)은 클러스터 외부 VM이므로 podSelector가 아닌
+# ipBlock으로 지정한다. monitor01은 Management VMnet(10.250.10.30)에 있다고
+# 기억하고 있으나, Prometheus가 실제로 어느 인터페이스로 Pod를 스크레이프하는지는
+# 이권욱/네트워크 쪽 확인이 필요하다 (Bridged Node IP로 직접 스크레이프할 수도 있음).
+# 이 부분은 확정 전까지 가정치이니 적용 전 재확인 필요.
+# ============================================================
+
+# 1) Default Deny — Namespace 내 모든 Ingress/Egress 우선 차단
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: fds
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# 2) DNS 허용 — 모든 Pod가 CoreDNS(cluster.local)로 조회 가능해야 함
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: fds
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# 3) edge01 → transaction-api (Client Entry)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-edge-to-transaction-api
+  namespace: fds
+spec:
+  podSelector:
+    matchLabels:
+      app: transaction-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.1.93.50/32   # edge01
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+# 4) transaction-api → fds-engine (Internal Contract, TCP 8001)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-transaction-api-to-fds-engine
+  namespace: fds
+spec:
+  podSelector:
+    matchLabels:
+      app: fds-engine
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: transaction-api
+      ports:
+        - protocol: TCP
+          port: 8001
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-transaction-api-egress-to-fds-engine
+  namespace: fds
+spec:
+  podSelector:
+    matchLabels:
+      app: transaction-api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: fds-engine
+      ports:
+        - protocol: TCP
+          port: 8001
+---
+# 5) transaction-api → db01 (Deny 정책: fds-engine은 여기 포함시키지 않음)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-transaction-api-to-db
+  namespace: fds
+spec:
+  podSelector:
+    matchLabels:
+      app: transaction-api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.1.93.55/32   # db01
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# 6) Prometheus(monitor01) → transaction-api/fds-engine 메트릭 스크레이프
+# ASSUMPTION: monitor01이 Management VMnet(10.250.10.0/24)에서 직접 스크레이프한다고 가정.
+# 실제 스크레이프 경로가 다르면(예: Bridged Node IP 경유) ipBlock 재확인 필요.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+  namespace: fds
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["transaction-api", "fds-engine"]
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.250.10.0/24
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8001

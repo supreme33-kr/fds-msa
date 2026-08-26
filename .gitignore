@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.log
+
+# 실제 Secret은 절대 커밋 금지 (secret.example.yaml만 유지)
+kubernetes/base/secret.yaml
