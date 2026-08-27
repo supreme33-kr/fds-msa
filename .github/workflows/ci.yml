@@ -74,7 +74,7 @@ jobs:
 
       - name: Apply to k3s
         run: |
-          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          export KUBECONFIG=$HOME/.kube/config
           kubectl apply -f kubernetes/base/namespace.yaml
           kubectl apply -f kubernetes/base/serviceaccount.yaml
           kubectl apply -f kubernetes/base/configmap.yaml
@@ -84,6 +84,6 @@ jobs:
 
       - name: Wait for rollout
         run: |
-          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          export KUBECONFIG=$HOME/.kube/config
           kubectl rollout status deployment/fds-engine -n fds --timeout=120s
           kubectl rollout status deployment/transaction-api -n fds --timeout=120s
