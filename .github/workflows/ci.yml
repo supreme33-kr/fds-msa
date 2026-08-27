@@ -35,6 +35,8 @@ jobs:
             ./${{ matrix.service }}
 
       - name: Trivy scan (fail on HIGH/CRITICAL)
+        env:
+          DOCKER_HOST: unix:///run/user/1002/podman/podman.sock
         run: |
           trivy image --severity HIGH,CRITICAL --exit-code 1 \
             ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/${{ matrix.service }}:${{ steps.vars.outputs.TAG }}
