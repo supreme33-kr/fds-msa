@@ -19,13 +19,15 @@ spec:
       hostPID: false
       hostIPC: false
       hostNetwork: false
+      imagePullSecrets:
+        - name: harbor-pull-secret
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
         fsGroup: 10001
       containers:
         - name: fds-engine
-          image: harbor.fds.internal/fds/fds-engine:CHANGE_ME
+          image: 10.1.93.54/fds/fds-engine:v0.1.0
           ports:
             - containerPort: 8001
               name: http

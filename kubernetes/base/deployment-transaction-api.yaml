@@ -19,13 +19,15 @@ spec:
       hostPID: false
       hostIPC: false
       hostNetwork: false
+      imagePullSecrets:
+        - name: harbor-pull-secret
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
         fsGroup: 10001
       containers:
         - name: transaction-api
-          image: harbor.fds.internal/fds/transaction-api:CHANGE_ME
+          image: 10.1.93.54/fds/transaction-api:v0.1.0
           ports:
             - containerPort: 8000
               name: http
