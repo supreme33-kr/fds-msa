@@ -1,0 +1,6 @@
+# perl-base: python:3.12-slim(Debian 13) 베이스 이미지 기본 포함 패키지.
+# fds-engine은 Python/FastAPI만 사용하며 perl을 직접 호출하지 않음.
+# Debian 상류에서 아직 fix 미배포(affected/fix_deferred) - 2026-08-27 확인, 이재환
+CVE-2026-13221
+CVE-2026-42496
+CVE-2026-8376

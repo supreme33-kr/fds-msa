@@ -45,7 +45,7 @@ jobs:
         env:
           DOCKER_HOST: unix:///run/user/1002/podman/podman.sock
         run: |
-          trivy image --severity CRITICAL --exit-code 1 \
+          trivy image --severity CRITICAL --exit-code 1 --ignorefile ./${{ matrix.service }}/.trivyignore \
             ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/${{ matrix.service }}:${{ steps.vars.outputs.TAG }}
 
       - name: Login to Harbor
