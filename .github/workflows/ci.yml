@@ -1,0 +1,80 @@
+name: FDS CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'transaction-api/**'
+      - 'fds-engine/**'
+      - 'kubernetes/**'
+      - '.github/workflows/**'
+  workflow_dispatch: {}
+
+env:
+  HARBOR_REGISTRY: 10.1.93.54
+  HARBOR_PROJECT: fds
+
+jobs:
+  build-scan-push:
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        service: [transaction-api, fds-engine]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image tag (commit SHA)
+        id: vars
+        run: echo "TAG=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        run: |
+          docker build -t ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/${{ matrix.service }}:${{ steps.vars.outputs.TAG }} \
+            -t ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/${{ matrix.service }}:latest \
+            ./${{ matrix.service }}
+
+      - name: Trivy scan (fail on HIGH/CRITICAL)
+        run: |
+          trivy image --severity HIGH,CRITICAL --exit-code 1 \
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/${{ matrix.service }}:${{ steps.vars.outputs.TAG }}
+
+      - name: Login to Harbor
+        run: echo "${{ secrets.HARBOR_PASSWORD }}" | docker login ${{ env.HARBOR_REGISTRY }} -u ${{ secrets.HARBOR_USERNAME }} --password-stdin
+
+      - name: Push image
+        run: |
+          docker push ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/${{ matrix.service }}:${{ steps.vars.outputs.TAG }}
+          docker push ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/${{ matrix.service }}:latest
+
+  deploy:
+    needs: build-scan-push
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image tag (commit SHA)
+        id: vars
+        run: echo "TAG=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Update image tags in manifests
+        run: |
+          sed -i "s|image: .*fds-engine:.*|image: ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/fds-engine:${{ steps.vars.outputs.TAG }}|" kubernetes/base/deployment-fds-engine.yaml
+          sed -i "s|image: .*transaction-api:.*|image: ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/transaction-api:${{ steps.vars.outputs.TAG }}|" kubernetes/base/deployment-transaction-api.yaml
+
+      - name: Apply to k3s
+        run: |
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          kubectl apply -f kubernetes/base/namespace.yaml
+          kubectl apply -f kubernetes/base/serviceaccount.yaml
+          kubectl apply -f kubernetes/base/configmap.yaml
+          kubectl apply -f kubernetes/base/deployment-fds-engine.yaml
+          kubectl apply -f kubernetes/base/deployment-transaction-api.yaml
+          kubectl apply -f kubernetes/base/service.yaml
+
+      - name: Wait for rollout
+        run: |
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          kubectl rollout status deployment/fds-engine -n fds --timeout=120s
+          kubectl rollout status deployment/transaction-api -n fds --timeout=120s
