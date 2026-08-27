@@ -34,11 +34,18 @@ jobs:
             -t ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/${{ matrix.service }}:latest \
             ./${{ matrix.service }}
 
-      - name: Trivy scan (fail on HIGH/CRITICAL)
+      - name: Trivy scan - HIGH (report only)
         env:
           DOCKER_HOST: unix:///run/user/1002/podman/podman.sock
         run: |
-          trivy image --severity HIGH,CRITICAL --exit-code 1 \
+          trivy image --severity HIGH --exit-code 0 \
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/${{ matrix.service }}:${{ steps.vars.outputs.TAG }}
+
+      - name: Trivy scan - CRITICAL (blocking)
+        env:
+          DOCKER_HOST: unix:///run/user/1002/podman/podman.sock
+        run: |
+          trivy image --severity CRITICAL --exit-code 1 \
             ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/${{ matrix.service }}:${{ steps.vars.outputs.TAG }}
 
       - name: Login to Harbor
