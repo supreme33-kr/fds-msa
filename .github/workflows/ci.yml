@@ -49,7 +49,7 @@ jobs:
             ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/${{ matrix.service }}:${{ steps.vars.outputs.TAG }}
 
       - name: Login to Harbor
-        run: echo "${{ secrets.HARBOR_PASSWORD }}" | docker login ${{ env.HARBOR_REGISTRY }} -u ${{ secrets.HARBOR_USERNAME }} --password-stdin
+        run: echo "${{ secrets.HARBOR_PASSWORD }}" | docker login ${{ env.HARBOR_REGISTRY }} -u '${{ secrets.HARBOR_USERNAME }}' --password-stdin
 
       - name: Push image
         run: |
