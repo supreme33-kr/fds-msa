@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-api
+  namespace: fds-app
+spec:
+  type: ClusterIP
+  selector:
+    app: transaction-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fds-engine
+  namespace: fds-app
+spec:
+  type: ClusterIP
+  selector:
+    app: fds-engine
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8001

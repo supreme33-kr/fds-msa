@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fds-engine
+  namespace: fds-app
+  labels:
+    app: fds-engine
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fds-engine
+  template:
+    metadata:
+      labels:
+        app: fds-engine
+    spec:
+      serviceAccountName: fds-engine-sa
+      hostPID: false
+      hostIPC: false
+      hostNetwork: false
+      imagePullSecrets:
+        - name: harbor-pull-secret
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: fds-engine
+          image: 10.1.93.54/fds/fds-engine:latest
+          ports:
+            - containerPort: 8001
+              name: http
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          # 외부 의존성 없음 → startupProbe 불필요, /health 하나로 충분
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            periodSeconds: 5
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            periodSeconds: 10
+            timeoutSeconds: 2
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 192Mi
+      volumes:
+        - name: tmp
+          emptyDir: {}

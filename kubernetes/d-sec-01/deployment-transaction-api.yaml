@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transaction-api
+  namespace: fds-app
+  labels:
+    app: transaction-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: transaction-api
+  template:
+    metadata:
+      labels:
+        app: transaction-api
+    spec:
+      serviceAccountName: transaction-api-sa
+      hostPID: false
+      hostIPC: false
+      hostNetwork: false
+      imagePullSecrets:
+        - name: harbor-pull-secret
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: transaction-api
+          image: 10.1.93.54/fds/transaction-api:latest
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: fds-app-config
+            - secretRef:
+                name: fds-app-db-credentials
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          # startupProbe: DB 커넥션 풀 warmup 대기 — 초기 기동 시 kubelet이
+          # readiness/liveness보다 넉넉한 유예로 기다려줌
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: 12   # 최대 60초 대기
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            periodSeconds: 5
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 2
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: tmp
+          emptyDir: {}
