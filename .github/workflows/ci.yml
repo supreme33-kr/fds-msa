@@ -81,6 +81,10 @@ jobs:
           kubectl apply -f kubernetes/base/deployment-fds-engine.yaml
           kubectl apply -f kubernetes/base/deployment-transaction-api.yaml
           kubectl apply -f kubernetes/base/service.yaml
+          kubectl apply -f kubernetes/monitoring/prometheus.yaml
+          kubectl apply -f kubernetes/monitoring/node-exporter.yaml
+          kubectl apply -f kubernetes/monitoring/grafana.yaml
+          kubectl apply -f kubernetes/monitoring/networkpolicy.yaml
 
       - name: Wait for rollout
         run: |
