@@ -6,13 +6,17 @@ metadata:
   labels:
     app: transaction-api
 spec:
-  type: ClusterIP
+  # D18 Option A: NodePort + edge01 nginx reverse proxy
+  # 실제 3-Worker 클러스터 확보 시 nodePort는 그대로, edge01 nginx upstream에
+  # Worker(.105/.107/.108) 3대 IP를 추가한다.
+  type: NodePort
   selector:
     app: transaction-api
   ports:
     - name: http
       port: 80
       targetPort: 8000
+      nodePort: 30080
 ---
 apiVersion: v1
 kind: Service
