@@ -11,6 +11,7 @@ spec:
   # Worker(.105/.107/.108) 3대 IP를 추가한다.
   type: NodePort
   externalTrafficPolicy: Local
+  externalTrafficPolicy: Local
   selector:
     app: transaction-api
   ports:
