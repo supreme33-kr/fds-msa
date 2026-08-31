@@ -85,6 +85,8 @@ jobs:
           kubectl apply -f kubernetes/monitoring/node-exporter.yaml
           kubectl apply -f kubernetes/monitoring/grafana.yaml
           kubectl apply -f kubernetes/monitoring/networkpolicy.yaml
+          kubectl apply -f kubernetes/monitoring/kube-state-metrics.yaml
+          kubectl apply -f kubernetes/monitoring/allow-prometheus-egress-kube-state-metrics.yaml
 
       - name: Wait for rollout
         run: |

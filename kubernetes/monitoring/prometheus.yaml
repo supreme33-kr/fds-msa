@@ -20,6 +20,9 @@ data:
         # 주의: 실제 3-Worker 클러스터에서는 Prometheus가 monitor01(외부 VM)에
         # 위치하므로 hairpin 문제가 없다. 이 target 방식(노드 IP 직접 지정)은
         # Baseline IF-06(monitor01 → CP/Worker TCP 9100)과 일치하는 정석 방식.
+      - job_name: 'kube-state-metrics'
+        static_configs:
+          - targets: ['kube-state-metrics.monitoring-api.svc.cluster.local:8080']
 ---
 apiVersion: apps/v1
 kind: Deployment
