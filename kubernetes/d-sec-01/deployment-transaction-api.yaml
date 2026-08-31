@@ -51,19 +51,19 @@ spec:
           # readiness/liveness보다 넉넉한 유예로 기다려줌
           startupProbe:
             httpGet:
-              path: /ready
+              path: /readyz
               port: 8000
             periodSeconds: 5
             failureThreshold: 12   # 최대 60초 대기
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /readyz
               port: 8000
             periodSeconds: 5
             timeoutSeconds: 2
           livenessProbe:
             httpGet:
-              path: /health
+              path: /livez
               port: 8000
             periodSeconds: 10
             timeoutSeconds: 2

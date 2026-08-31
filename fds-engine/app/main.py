@@ -41,9 +41,15 @@ class EvaluateRequest(BaseModel):
     context: ContextPayload = ContextPayload()
 
 
-@app.get("/health")
+@app.get("/livez")
 async def health():
     # 외부 의존성 없음 — 프로세스 응답 여부만 확인
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def ready():
+    # fds-engine은 외부 의존성 없음 — livez와 동일 로직, readiness probe용 별도 경로
     return {"status": "ok"}
 
 

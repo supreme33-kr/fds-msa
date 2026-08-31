@@ -32,13 +32,13 @@ class TransactionRequest(BaseModel):
 
 # --- Health / Readiness / Startup ---
 # liveness: 외부 호출 없이 프로세스 응답 여부만 확인
-@app.get("/health")
+@app.get("/livez")
 async def health():
     return {"status": "ok"}
 
 
 # readiness + startupProbe 공용: 실제 DB 커넥션 확인
-@app.get("/ready")
+@app.get("/readyz")
 async def ready(response: Response):
     try:
         await db_ping()

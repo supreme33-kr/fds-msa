@@ -45,13 +45,13 @@ spec:
           # 외부 의존성 없음 → startupProbe 불필요, /health 하나로 충분
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8001
             periodSeconds: 5
             timeoutSeconds: 2
           livenessProbe:
             httpGet:
-              path: /health
+              path: /livez
               port: 8001
             periodSeconds: 10
             timeoutSeconds: 2
