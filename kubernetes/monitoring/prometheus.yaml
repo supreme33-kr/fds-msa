@@ -7,6 +7,12 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
+    rule_files:
+      - /etc/prometheus/rules/alert-rules.yml
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ['alertmanager.fds.svc.cluster.local:9093']
     scrape_configs:
       - job_name: 'transaction-api'
         static_configs:
@@ -62,12 +68,17 @@ spec:
               mountPath: /etc/prometheus
             - name: tmp
               mountPath: /prometheus
+            - name: alert-rules
+              mountPath: /etc/prometheus/rules/
       volumes:
         - name: config
           configMap:
             name: prometheus-config
         - name: tmp
           emptyDir: {}
+        - name: alert-rules
+          configMap:
+            name: prometheus-alert-rules
 ---
 apiVersion: v1
 kind: Service
