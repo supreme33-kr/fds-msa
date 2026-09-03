@@ -6,14 +6,20 @@ FDS Rule Evaluation Logic — stateless.
   transaction-api가 사전 계산한 `context` 값을 그대로 사용해 판정만 수행한다.
 
 Threshold는 전부 초안값이며 실제 운영값은 팀 논의 후 확정 필요 (Open Issue).
+
+2026-09-03 팀 Decision: 저장/판정 시간 기준은 KST. R04 심야 윈도우는
+KST 01:00~05:00으로 확정(기존 UTC 23:00~06:00 초안값에서 변경).
 """
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+KST = ZoneInfo("Asia/Seoul")
 
 # --- Threshold (초안 — 확정 필요) ---
 R01_WITHDRAWAL_COUNT_THRESHOLD = 3      # 10분 내 인출 3회 이상
 R02_HIGH_AMOUNT_THRESHOLD = 3_000_000   # 300만원 이상 (KRW)
-R04_LATE_NIGHT_START_HOUR = 23          # 23:00 ~ 06:00
-R04_LATE_NIGHT_END_HOUR = 6
+R04_LATE_NIGHT_START_HOUR = 1           # KST 01:00 ~ 05:00 (2026-09-03 확정)
+R04_LATE_NIGHT_END_HOUR = 5
 R04_LATE_NIGHT_AMOUNT_THRESHOLD = 1_000_000  # 100만원 이상
 R07_TRANSFER_COUNT_THRESHOLD = 3        # 1시간 내 3건 이상
 R07_TRANSFER_SUM_THRESHOLD = 2_000_000  # 1시간 합산 200만원 이상
@@ -35,10 +41,15 @@ def evaluate_r02(amount: float) -> tuple[bool, str | None]:
 
 
 def evaluate_r04(occurred_at: datetime, amount: float) -> tuple[bool, str | None]:
-    hour = occurred_at.astimezone(timezone.utc).hour
-    is_late_night = hour >= R04_LATE_NIGHT_START_HOUR or hour < R04_LATE_NIGHT_END_HOUR
+    # KST 기준으로 변환해서 "심야" 여부를 판정한다 (2026-09-03 팀 Decision).
+    # occurred_at이 naive datetime으로 들어올 가능성에 대비해 tz 없는 경우
+    # UTC로 간주한 뒤 KST로 변환한다 (기존 UTC 저장 관행과의 호환).
+    if occurred_at.tzinfo is None:
+        occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+    hour = occurred_at.astimezone(KST).hour
+    is_late_night = R04_LATE_NIGHT_START_HOUR <= hour < R04_LATE_NIGHT_END_HOUR
     if is_late_night and amount >= R04_LATE_NIGHT_AMOUNT_THRESHOLD:
-        return True, f"심야({hour:02d}시) 고액 거래 {amount:,.0f}원"
+        return True, f"심야(KST {hour:02d}시) 고액 거래 {amount:,.0f}원"
     return False, None
 
 
