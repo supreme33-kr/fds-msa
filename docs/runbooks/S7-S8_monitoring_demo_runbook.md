@@ -49,11 +49,15 @@ kubectl -n fds rollout restart deploy/prometheus deploy/grafana
 kubectl -n monitoring-api rollout restart deploy/kube-state-metrics
 
 # --- 이상거래 급증 알림(FDSDetectionBurst) 을 시연에 포함하려면 (선택적 고도화 후보, v1.5 §1) ---
-# 전제: fds-engine replicas=1 (라운드로빈 오탐 회피). base 매니페스트가 이미 1.
-kubectl apply -f kubernetes/base/deployment-fds-engine.yaml   # replicas=1
+# 전제: fds-engine 1 replica (라운드로빈 오탐 회피).
+#   ⚠️ deployment-fds-engine.yaml 을 apply 하지 말 것 — 클러스터와 template drift 로 새 파드가
+#      CrashLoop 한다. scale 로만 조정한다:
+kubectl -n fds scale deploy/fds-engine --replicas=1
+kubectl -n fds get deploy fds-engine     # 1/1
 kubectl apply -f kubernetes/monitoring/alert-rules-optional.yaml
 kubectl -n fds exec deploy/prometheus -- wget -qO- --post-data='' localhost:9090/-/reload
 #   확인: rules 목록에 FDSDetectionBurst / FDSDetectionBurstAnyRule / UnexpectedPodInFdsNs 추가
+# 되돌리기: kubectl -n fds scale deploy/fds-engine --replicas=3  +  optional CM 삭제
 ```
 
 ### 1.1 배포 확인

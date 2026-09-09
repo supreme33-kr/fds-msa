@@ -1,8 +1,9 @@
 # 선택적 고도화 후보 알림 (v1.5 §1) — 기존 P0 에 자동 편입하지 않는다. 임계값 전부 NOT VERIFIED.
 # 발표에서 "기존 P0" 로 소개하지 않고 "이렇게 확장 가능" 으로 소개한다.
 #
-# 적용 전제: fds-engine replicas=1 (E-K3S). 3 replica + ClusterIP 스크레이프면 라운드로빈으로
-#   FDSDetectionBurst 가 오탐하므로 반드시 replicas=1 상태에서만 적용한다.
+# 적용 전제: fds-engine 1 replica (E-K3S). 반드시 `kubectl -n fds scale deploy/fds-engine --replicas=1`
+#   로만 조정한다 — deployment-fds-engine.yaml 을 apply 하면 클러스터와 template drift 로 CrashLoop.
+#   3 replica + ClusterIP 스크레이프면 라운드로빈으로 FDSDetectionBurst 가 오탐한다.
 #   E-CANON(정본 다중 노드)에서는 headless-services.yaml + dns_sd 파드 단위 스크레이프 후 적용.
 #
 # prometheus.yml 의 rule_files 는 /etc/prometheus/rules-opt/*.yml 도 glob 하며,
