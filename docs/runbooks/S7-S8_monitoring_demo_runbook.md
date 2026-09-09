@@ -5,7 +5,8 @@
 - 대상 저장소: `321Team/fds-msa` (IMPLEMENTATION_CODE), 기준 HEAD `dc674f0` (main)
 - 대상 시나리오: `FDS_보안시연_시나리오_v1.4_PR현황반영.md` §2 A1~A4 · §3 S7 · §3 S8
 - 대상 환경: **edge01 임시 k3s (단일 노드, `fds` / `monitoring-api` / `monitoring-node` ns)**
-- AI 사용: CLAUDE_ASSISTED / AI 활용: 구현 보조 / 사람 확인: PENDING — 사람 확인 후 기입
+- 구현·시연: 이재환 (App/Data/Monitoring/QA)
+- 이 문서는 배포·시연·증적 수집 절차. GitHub PR 리뷰 표기(AI 사용/AI 활용/사람 확인/최종 판정)는 리뷰 초안에만 적용 — 이 문서 범위 아님(CLAUDE.md §2).
 
 > ⚠️ 이 Runbook의 실행 결과는 아직 아무것도 채워지지 않았다. 아래 "확인 항목"은 전부
 > `NOT RUN`. 실행한 사람이 로그를 붙이고 표기를 갱신한다. CI는 GitHub Free Private로
@@ -178,6 +179,5 @@ DOWN_SEC=120 ./scripts/demo/s8_target_down.sh
    git commit   # 메시지에 "신규 통제 아님 / threshold NOT VERIFIED / CI NOT RUN" 명시
    git push -u origin feature/p1-mon-s7-s8-observability
    ```
-2. `PR → Files changed → Review changes` 에서 **본인 계정**으로 제출. AI 자동 등록 아님.
-3. 작성자(이재환)와 독립 Reviewer는 같은 사람이 될 수 없다 — Reviewer 지정 필요.
-4. 최종 판정: **PENDING — 사람 결정**. 사람 확인: PENDING — 사람 확인 후 기입.
+2. PR 생성 후 **독립 Reviewer 지정** — 작성자(이재환)와 같은 사람이 될 수 없다.
+3. 리뷰 진행·판정·표기는 CLAUDE.md의 GitHub 리뷰 규칙을 따른다 — 이 구현 문서의 범위가 아니다.

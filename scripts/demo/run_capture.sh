@@ -125,7 +125,7 @@ cat > "${out}/REPORT.md" <<EOF
 
 - 환경: edge01 임시 k3s / \`fds\` ns / 시나리오 v1.4 §3 S7·S8
 - 캡처 시각: $(date -Iseconds)
-- AI 사용: CLAUDE_ASSISTED / AI 활용: 구현·시연 보조 / 사람 확인: PENDING
+- 구현·시연: 이재환 (App/Data/Monitoring/QA)
 
 ## S7 — 이상거래 급증
 - 부하: 계정 \`${ACCOUNT_ID}\`, 고액 withdrawal, ${S7_DURATION}s 연속 POST
@@ -142,10 +142,10 @@ cat > "${out}/REPORT.md" <<EOF
 ## 지표 스냅샷
 \`30_metrics.txt\`
 
-## 주의 / NOT VERIFIED
-- 임계값(FDSDetectionBurst >20/5m 등) = NOT VERIFIED. 베이스라인 트래픽 관측 후 팀 확정.
-- CI NOT RUN (GitHub Free Private). kubectl dry-run 검증은 별도.
-- 최종 판정 PENDING — 사람 결정.
+## 주의 (미확정 항목)
+- 임계값(FDSDetectionBurst >20/5m 등) 미확정. 베이스라인 트래픽 관측 후 팀 확정.
+- CI 미실행 (GitHub Free Private). kubectl dry-run 검증은 별도.
+- 본 캡처는 edge01 임시 k3s 한정. 실 6-Node 재검증 별도.
 EOF
 
 # --- capture.html (발표용, 자체 완결) ---
@@ -163,7 +163,7 @@ esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
 </style>
 HEAD
   echo "<h1>FDS 보안 시연 — S7 / S8 캡처</h1>"
-  echo "<div class=meta>${ts} · edge01 임시 k3s · 시나리오 v1.4 §3 · AI: CLAUDE_ASSISTED · 사람 확인: PENDING</div>"
+  echo "<div class=meta>${ts} · edge01 임시 k3s · 시나리오 v1.4 §3 · 구현·시연: 이재환</div>"
   echo "<table><tr><th>항목</th><th>결과</th></tr>"
   echo "<tr><td>S7 거래 응답</td><td class=ok>전건 201 (차단 없음)</td></tr>"
   echo "<tr><td>R02 5m 증가분(캡처시점)</td><td class=warn>${r02now} / 임계 20</td></tr>"
