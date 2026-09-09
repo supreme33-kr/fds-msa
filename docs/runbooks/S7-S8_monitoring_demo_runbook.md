@@ -1,183 +1,156 @@
-# S7 / S8 관측 스택 배포·시연 Runbook
+# S7a / S7b / S8 관측 스택 배포·시연 Runbook (v1.5 정렬)
 
 - 작성일: 2026-09-09
 - 담당: 이재환 (Application / Data / Monitoring / QA — Baseline v3.1.1 §3)
-- 대상 저장소: `321Team/fds-msa` (IMPLEMENTATION_CODE), 기준 HEAD `dc674f0` (main)
-- 대상 시나리오: `FDS_보안시연_시나리오_v1.4_PR현황반영.md` §2 A1~A4 · §3 S7 · §3 S8
-- 대상 환경: **edge01 임시 k3s (단일 노드, `fds` / `monitoring-api` / `monitoring-node` ns)**
-- 구현·시연: 이재환 (App/Data/Monitoring/QA)
-- 이 문서는 배포·시연·증적 수집 절차. GitHub PR 리뷰 표기(AI 사용/AI 활용/사람 확인/최종 판정)는 리뷰 초안에만 적용 — 이 문서 범위 아님(CLAUDE.md §2).
+- 대상 저장소: `fds-msa` (구현 코드). 정본 저장소는 담당자 확인 — v1.5 §3 에 `321Team/fds-msa` 404 언급.
+- 대상 시나리오: `FDS_Security_Demo_Scenarios_v1.5.md` §6 S7a·S7b·S8, §7 MON-CHECK
+- 대상 환경: **E-K3S** — edge01 임시 단일 노드 k3s (`fds` / `monitoring-api` / `monitoring-node` ns)
+- 이 문서는 배포·시연·증적 수집 절차. PR 리뷰 표기·판정은 CLAUDE.md 리뷰 규칙 전용 — 이 문서 범위 아님.
 
-> ⚠️ 이 Runbook의 실행 결과는 아직 아무것도 채워지지 않았다. 아래 "확인 항목"은 전부
-> `NOT RUN`. 실행한 사람이 로그를 붙이고 표기를 갱신한다. CI는 GitHub Free Private로
-> `NOT RUN` (보상통제: CR 브랜치 + PR 리뷰 + 불변 SHA + main 직접 push 금지).
+> ⚠️ E-K3S 결과는 **임시 실증**이다. Gate/티켓 Done, 정본(E-CANON) Runtime PASS 로 승격하지 않는다.
+> 정본은 Namespace(`fds-app`/`monitoring-api`/`monitoring-node`)·Calico HEP/GNP·edge→Worker NodePort
+> 경로가 다르다. 아래 "확인 항목"은 실행 전 전부 `NOT RUN`.
 
 ---
 
-## 0. 무엇을 추가했나 (신규 통제 아님 — 이미 P0인데 미배포)
+## 0. 무엇을 배포/수정했나
 
-| 항목 | 파일 | 변경 |
+| 항목 | 파일 | 내용 |
 |---|---|---|
-| **A1** Alertmanager 화면 수신 1개 | `kubernetes/monitoring/alertmanager-config.yaml` | 빈 receiver → route(group_by alertname/severity) + inhibit_rules + `screen-only` receiver(integration 없음 = UI에만). 메일/SMS/메신저 없음([BL] §11.2, IF-24 RETIRED) |
-| **A2** Prometheus alert rules | `kubernetes/monitoring/alert-rules.yaml` | `NodeExporterDown` 유지 + `TargetDown` · `FDSDetectionBurst`(R02) · `FDSDetectionBurstAnyRule`(info) · `UnexpectedPodInFdsNs` 추가. **모든 threshold = NOT VERIFIED** |
-| **A3** Grafana 3 대시보드 + PVC | `kubernetes/monitoring/grafana.yaml`, `grafana-dashboards.yaml` | `data` emptyDir → PVC `grafana-data`(local-path 1Gi). dashboard provisioning provider + `Application & FDS` / `Kubernetes Workload` / `Target Health` 3종 |
-| **A4** kubelet(10250) scrape | `kubernetes/monitoring/prometheus.yaml`, `prometheus-rbac.yaml`, `allow-prometheus-egress-kubelet.yaml` | `kubelet` · `kubelet-cadvisor` static job + SA `prometheus` + ClusterRole `nodes/metrics` + egress NetworkPolicy(.50:10250). `--web.enable-lifecycle` 추가 |
-| A2 보조 | `kubernetes/monitoring/kube-state-metrics.yaml` | `--metric-labels-allowlist=pods=[app],deployments=[app]` (UnexpectedPodInFdsNs 룰이 `kube_pod_labels{label_app=...}` 사용) |
+| **A1** Alertmanager 화면 수신 | `alertmanager-config.yaml` | route(group_by)+inhibit_rules+`screen-only` receiver. 외부 integration 없음(메일/SMS/webhook). [BL] §11.2 |
+| **A2** alert rules (2 그룹) | `alert-rules.yaml` | `fds-core-observability`: `NodeExporterDown`·`KubeletScrapeDownK3s`(info)·`TargetDown`. `fds-optional-hardening`: `FDSDetectionBurst`·`FDSDetectionBurstAnyRule`·`UnexpectedPodInFdsNs` — **v1.5 §1 "선택적 고도화 후보", P0 아님, 임계값 미확정** |
+| **S7b** P0 Test Alert | `p0-test-alert.yaml` | `FDSMonitoringPipelineTest` — 기본 비활성(`vector(1)==0`). 시연 시 `s7b_test_alert.sh` 가 `==1`로 전환 |
+| **A3** Grafana 3 뷰 + PVC | `grafana.yaml`, `grafana-dashboards.yaml` | emptyDir→PVC `grafana-data`(local-path 1Gi). `Application & FDS` / `Kubernetes Workload` / **`Node & Monitoring Health`** |
+| **A4** kubelet scrape | `prometheus.yaml`, `prometheus-rbac.yaml`, `allow-prometheus-egress-kubelet.yaml` | `kubelet`/`kubelet-cadvisor` static job + SA `prometheus` + ClusterRole `nodes/metrics` + egress NP. `--web.enable-lifecycle` |
+| **스크레이프 픽스** | `prometheus.yaml`, `headless-services.yaml` | transaction-api/fds-engine 를 **headless Service + dns_sd 로 파드 단위** 스크레이프. ClusterIP 라운드로빈이 3 replica 카운터를 리셋으로 오인 → `increase()`/`rate()` 영구 부풀음 방지 |
+| A2 보조 | `kube-state-metrics.yaml` | `--metric-labels-allowlist=pods=[app],deployments=[app]` |
 
-**손대지 않은 것:** A5 monitor01 외부 Watchdog(IF-06B `BLOCKED` — 경로 이슈, 이재환 범위 밖),
-A6 node-exporter DOWN(k3s hairpin — §6 탐지 한계로 정직하게 발표, 실 6노드에서 해소).
-거래정지/`status` 컬럼/4xx 차단 — 없음(팀 확정).
-
-임계값이 `NOT VERIFIED`인 이유: 베이스라인 트래픽을 관측한 적이 없다. 시연에서 관측한
-정상 rate를 기록한 뒤 팀이 확정한다. 지금 값(FDSDetectionBurst `>20/5m`,
-UnexpectedPodInFdsNs `정상 파드 9개 기준`)은 시연이 "동작"함을 보이기 위한 임시값이다.
+**손대지 않은 것:** A5 monitor01 Watchdog(IF-06B `BLOCKED`, 범위 밖), node-exporter/kubelet DOWN
+(k3s hairpin — 전용 info 룰로 분리, 실 6노드에서 정석). 거래정지/`status` 컬럼/4xx — 없음.
 
 ---
 
-## 1. 배포 (edge01, kubectl 접근 가능한 위치에서)
+## 1. 배포 (edge01)
 
 ```bash
 cd fds-msa
-
-# 1) RBAC / SA 먼저 (Prometheus 재기동 전에 있어야 kubelet 스크레이프 인증됨)
 kubectl apply -f kubernetes/monitoring/prometheus-rbac.yaml
-
-# 2) ConfigMap (Alertmanager / Prometheus / rules / Grafana provisioning)
-kubectl apply -f kubernetes/monitoring/alertmanager-config.yaml
-kubectl apply -f kubernetes/monitoring/alert-rules.yaml
-kubectl apply -f kubernetes/monitoring/prometheus.yaml
-kubectl apply -f kubernetes/monitoring/grafana-dashboards.yaml
-kubectl apply -f kubernetes/monitoring/grafana.yaml
-kubectl apply -f kubernetes/monitoring/kube-state-metrics.yaml
-
-# 3) NetworkPolicy (fds ns egress → kubelet)
-kubectl apply -f kubernetes/monitoring/allow-prometheus-egress-kubelet.yaml
-
-# 4) 재기동 — Prometheus Deployment(SA/flag 변경), Grafana(PVC/마운트 변경), ksm(args 변경)
+kubectl apply -f kubernetes/monitoring/headless-services.yaml
+kubectl apply -f kubernetes/monitoring/alertmanager-config.yaml \
+  -f kubernetes/monitoring/alert-rules.yaml \
+  -f kubernetes/monitoring/p0-test-alert.yaml \
+  -f kubernetes/monitoring/prometheus.yaml \
+  -f kubernetes/monitoring/grafana-dashboards.yaml \
+  -f kubernetes/monitoring/grafana.yaml \
+  -f kubernetes/monitoring/kube-state-metrics.yaml \
+  -f kubernetes/monitoring/allow-prometheus-egress-kubelet.yaml
 kubectl -n fds rollout restart deploy/prometheus deploy/grafana
 kubectl -n monitoring-api rollout restart deploy/kube-state-metrics
-
-# Alertmanager 는 config 파일 자동 reload → restart 불필요.
-# (ConfigMap만 바꿨고 Deployment 는 안 바꿨다면 Prometheus 도
-#  kubectl -n fds exec deploy/prometheus -- wget -qO- --post-data='' http://localhost:9090/-/reload  로 대체 가능)
 ```
 
 ### 1.1 배포 확인
 
 ```bash
-kubectl -n fds get pod -l 'app in (prometheus,grafana,alertmanager)'
-kubectl -n fds get pvc grafana-data                     # STATUS=Bound 여야 함
-kubectl -n monitoring-api get pod -l app=kube-state-metrics
-
-# Prometheus 타깃 (port-forward 후)
-kubectl -n fds port-forward svc/prometheus 9090:9090 &
-curl -s localhost:9090/api/v1/targets | grep -o '"job":"[^"]*","[^}]*"health":"[^"]*"'
-#   기대: transaction-api up / fds-engine up / kube-state-metrics up / kubelet up / kubelet-cadvisor up
-#         node-exporter down  ← k3s hairpin known-issue (정상)
-
-# 룰 로드 확인
-curl -s localhost:9090/api/v1/rules | grep -o '"name":"[^"]*"'
-#   기대: NodeExporterDown, TargetDown, FDSDetectionBurst, FDSDetectionBurstAnyRule, UnexpectedPodInFdsNs
-
-# Grafana
-kubectl -n fds port-forward svc/grafana 3000:3000 &
-#   http://localhost:3000  (admin / admin) → Dashboards → FDS 폴더에 3개
+kubectl -n fds get pvc grafana-data                              # Bound
+kubectl -n fds get svc transaction-api-metrics fds-engine-metrics # CLUSTER-IP = None
+kubectl -n fds exec deploy/prometheus -- wget -qO- localhost:9090/api/v1/rules | grep -o '"name":"[^"]*"'
+kubectl -n fds exec deploy/prometheus -- wget -qO- 'localhost:9090/api/v1/query?query=count%20by%20(job)%20(up%7Bjob%3D~%22transaction-api%7Cfds-engine%22%7D)'
+#   → transaction-api / fds-engine 각각 instance 3 (파드 단위 스크레이프 확인)
 ```
 
 | 확인 | 기대 | 결과 |
 |---|---|---|
 | grafana-data PVC Bound | Bound | `NOT RUN` |
-| Prometheus 타깃 kubelet = up | up | `NOT RUN` |
-| Prometheus 룰 5종 로드 | 로드됨 | `NOT RUN` |
-| Grafana FDS 폴더 대시보드 3개 | 3개 provisioned | `NOT RUN` |
-| Alertmanager UI 접속 | 접속됨 | `NOT RUN` |
+| `*-metrics` headless svc | ClusterIP None | `NOT RUN` |
+| transaction-api/fds-engine target instance 수 | 각 3 | `NOT RUN` |
+| 룰 그룹 2개 로드 | core + optional-hardening | `NOT RUN` |
+| kubelet 타깃 | E-K3S 에선 down (hairpin, 예상) | `NOT RUN` |
+| Grafana FDS 폴더 뷰 3개 | provisioned | `NOT RUN` |
 
 ---
 
-## 2. S7 — 이상거래 급증 시연
+## 2. S7a — 합성 거래 탐지·기록·지표
 
 ```bash
-# 관측 로그 먼저 시작 (별도 터미널)
-kubectl -n fds port-forward svc/prometheus 9090:9090 &
-kubectl -n fds port-forward svc/alertmanager 9093:9093 &
-./scripts/demo/watch_alerts.sh | tee "docs/evidence/_local/s7_alert_timeline_$(date +%Y%m%dT%H%M%S).log"
-
-# 부하 발생 (edge01 nginx 경유). 45초.
-BASE_URL=http://10.1.93.50 ./scripts/demo/s7_transaction_burst.sh
-#   대안 진입점:  BASE_URL=http://<worker-node-ip>:30080 ./scripts/demo/s7_transaction_burst.sh
+BASE_URL=http://10.1.93.50 COUNT=40 ./scripts/demo/s7a_app_txn.sh --with-metrics
 ```
 
-관측/캡처:
-
-1. **Prometheus** `sum(increase(fds_detected_total{rule_id="R02"}[5m]))` 가 20 초과 →
-   `FDSDetectionBurst` `pending` → `firing`
-2. **Alertmanager UI** (`:9093`) — `FDSDetectionBurst` Firing, group `alertname=FDSDetectionBurst / severity=warning`
-3. **Grafana** `Application & FDS` — R02 라인이 빨강 임계선(20) 초과, 거래 저장 성공 rate 유지
-4. 부하 종료 5~6분 뒤 `increase` 가 20 아래로 → **Resolved**
-5. **DB** `psql -h 10.1.93.55 -U fds_app -d fdsdb -c "select transaction_id, amount, fds_detected, fds_rules from transactions where account_id='acc_s7_demo' order by received_at desc limit 5;"`
-   → 거래는 전부 저장, 응답은 201 (차단 없음)
+- 트리거된 Rule 은 **응답 `fds_rules[].triggered`** 로 집계한다. 금액만 보고 R02 라고 단정하지 않는다.
+- `201` = 자원 생성. 업무 승인·실제 송금 아님.
+- 저장 확인은 승인 운영 경로에서 `psql` raw SELECT (합성 계정). Grafana `Application & FDS` 동일 시간대.
 
 | 확인 | 기대 | 결과 |
 |---|---|---|
-| POST /api/v1/transactions 응답 | 201 (전건) | `NOT RUN` |
-| fds_detected_total{rule_id="R02"} 급증 | 증가 | `NOT RUN` |
-| FDSDetectionBurst Firing → Resolved | 관측됨 | `NOT RUN` |
-| Grafana 임계선 초과 캡처 | 캡처됨 | `NOT RUN` |
-| transactions 테이블 저장 확인 | 저장됨 | `NOT RUN` |
-| FDSDetectionBurst threshold 20 적정성 | 관측 후 팀 확정 | `NOT VERIFIED` |
+| POST 응답 | 201 (전건) | `NOT RUN` |
+| 응답 fds_rules 트리거 집계 | fixture 에 맞는 rule_id | `NOT RUN` |
+| transactions 저장 (raw SELECT) | 저장됨 | `NOT RUN` |
+| rule_id 별 5m 증가분 (파드 단위) | 정상 반영 | `NOT RUN` |
 
 ---
 
-## 3. S8 — 관측 신뢰성 (타깃 다운)
+## 3. S7b — P0 Test Alert 전이 (P1-MON-01 AC11)
 
 ```bash
-# port-forward 불필요 — 스크립트가 kubectl exec 로 pod 안에서 Prometheus 를 조회한다.
-# Ctrl-C 로 중단해도 trap 이 kube-state-metrics 를 replicas=1 로 복구한다.
+./scripts/demo/s7b_test_alert.sh demo     # fire → Alertmanager 수신 → clear → resolved
+```
+
+- `FDSMonitoringPipelineTest` : `vector(1)==1` fire → `vector(1)==0` clear. `vector(0)` 단독 안 씀.
+- 앱 지표·스크레이프 토폴로지와 **독립**. 전달 경로(Prometheus→Alertmanager)만 검증.
+- 종료 시 규칙은 기본(비활성) 상태로 자동 복구.
+
+| 확인 | 기대 | 결과 |
+|---|---|---|
+| Prometheus rule firing | firing | `NOT RUN` |
+| Alertmanager 동일 labels 수신 | 수신 | `NOT RUN` |
+| clear 후 Prometheus inactive + AM active 해제 | resolved | `NOT RUN` |
+| 규칙 원상복구 | 비활성 | `NOT RUN` |
+
+---
+
+## 4. S8 — 관측 신뢰성 (타깃 다운) · **선택 항목**
+
+```bash
 DOWN_SEC=120 ./scripts/demo/s8_target_down.sh
 ```
 
-- `kube-state-metrics` 0 replica → `up{job="kube-state-metrics"}==0` → `TargetDown` `firing` (for 1m)
-- Alertmanager UI: `TargetDown` Firing (severity critical)
-- 복구(replica 1) 후 최대 ~4분 내 Resolved
-- Grafana `Target Health` — `up` 패널이 0으로 떨어졌다 복귀
-
-**실사례 B (재현 불필요, 인용):** CR-P1-ANS-01-01 precheck 가 dns02 `.53` VM 전원 OFF로
-6/6 timeout FAIL → 재기동 후 PASS. "Secondary DNS 다운을 사전점검이 잡았다"
-([GH-F] `docs/change/CR-P1-ANS-01-01.md` Precheck execution history) — 이건 infra-ansible
-쪽 기록이므로 여기서는 **읽어서 인용만**, 직접 실행 아님.
+- `kube-state-metrics` 0 replica → `up==0` → `TargetDown` firing → 복구 → resolved.
+- 타깃은 static_config 라 discovery 에서 사라지지 않음(`up=0`, 시계열 부재 아님). Pod/Service 삭제 시험과 구분.
+- node-exporter/kubelet 은 S8 대상 아님(k3s hairpin, 전용 info 룰).
+- **실사례 인용**: dns02 `.53` OFF 로 precheck 6/6 timeout FAIL → 재기동 PASS ([GH-F], 읽어서 인용만).
 
 | 확인 | 기대 | 결과 |
 |---|---|---|
-| ksm scale 0 시 up==0 | 0 | `NOT RUN` |
-| TargetDown Firing (for 1m) | 관측됨 | `NOT RUN` |
-| ksm scale 1 복구 시 Resolved | 관측됨 | `NOT RUN` |
-| node-exporter 는 S8 대상 아님 (NodeExporterDown 별도) | 분리됨 | 설계상 분리 (문서 근거) |
+| ksm scale 0 → up==0 | 0 | `NOT RUN` |
+| TargetDown firing (for 1m) | firing | `NOT RUN` |
+| 복구 → resolved | resolved | `NOT RUN` |
 
 ---
 
-## 4. 잔여 위험 / 후속 Gate
+## 5. 한 번에 캡처
 
-- **임시 k3s 기준.** 실 6-Node(P1-K8S-01, Gate 0 / Bootstrap HOLD) 이관 시 전면 재검증:
-  kubelet static target → 워커 3대 IP 또는 `kubernetes_sd`, node-exporter는 hairpin 없이 정석,
-  egress NetworkPolicy ipBlock 교체.
-- **A5 monitor01 Watchdog** IF-06B `BLOCKED` — S9 는 이 Runbook 범위 밖. 경로 해소 후 별도.
-- **임계값 전부 `NOT VERIFIED`** — S7/S8 시연에서 정상 rate 관측 → 팀 확정 → 값 커밋.
-- **`UnexpectedPodInFdsNs`** 는 파드 라벨/개수 기반 coarse heuristic. NetworkPolicy drop 지표는
-  [BL] §11.3 에 없음(P1-MON-02) — 발표에서 한계로 명시.
-- **CI `NOT RUN`** (GitHub Free Private) — 보상통제 유지, CI PASS로 표기 금지.
-- 시연 캡처(로그)에 거래 페이로드 포함 가능 → 마스킹 후 보관, 원문 저장 금지 ([BL] §6 정신).
-- `docs/evidence/_local/` 는 `.gitignore` 대상(로컬 전용). 저장소엔 검토 완료본만 편입.
+```bash
+BASE_URL=http://10.1.93.50 ./scripts/demo/run_capture.sh          # S7a + S7b + S8
+BASE_URL=http://10.1.93.50 SKIP_S8=1 ./scripts/demo/run_capture.sh # S8 생략
+```
+→ `docs/evidence/_local/s7s8_<ts>/` 에 `REPORT.md` · `capture.html` · raw 로그.
 
 ---
 
-## 5. 제출 (사람이 수행)
+## 6. 잔여 위험 / 후속
 
-1. 브랜치 생성 후 커밋 (예):
-   ```bash
-   git switch -c feature/p1-mon-s7-s8-observability
-   git add kubernetes/monitoring/ scripts/demo/ docs/runbooks/S7-S8_monitoring_demo_runbook.md
-   git commit   # 메시지에 "신규 통제 아님 / threshold NOT VERIFIED / CI NOT RUN" 명시
-   git push -u origin feature/p1-mon-s7-s8-observability
-   ```
-2. PR 생성 후 **독립 Reviewer 지정** — 작성자(이재환)와 같은 사람이 될 수 없다.
-3. 리뷰 진행·판정·표기는 CLAUDE.md의 GitHub 리뷰 규칙을 따른다 — 이 구현 문서의 범위가 아니다.
+- **E-K3S 한정.** 실 6-Node(E-CANON, P1-K8S-01 Gate 0 / Bootstrap HOLD) 이관 시 전면 재검증:
+  kubelet 타깃(hairpin 해소)·node-exporter 정석·egress NP·정본 Namespace/Calico.
+- **`fds-optional-hardening` 그룹** — v1.5 §1 "선택적 고도화 후보". 임계값 미확정. 발표에서 P0 로 소개 금지.
+- **CI** — 이 저장소의 실행 근거는 이번 범위에서 미확보. "모든 Private repo 가 CI 불가"로 일반화하지 않는다.
+- **A5 monitor01 Watchdog** IF-06B `BLOCKED` — S9 범위 밖.
+- 시연 캡처는 합성 데이터만. credential 원문 금지. `docs/evidence/_local/` 는 `.gitignore`.
+- 정본 저장소·0002 Migration 최신 병합/운영 적용 상태 — 담당자 확인 (v1.5 §3).
+
+---
+
+## 7. 제출 (사람이 수행)
+
+1. `feature/p1-mon-s7-s8-observability` push 후 PR 생성. 정본 저장소 대상은 담당자와 확인.
+2. 독립 Reviewer 지정 — 작성자(이재환)와 같은 사람 불가.
+3. 리뷰 진행·판정·표기는 CLAUDE.md 리뷰 규칙 — 이 문서 범위 아님.
+4. 각 TC 실행은 `FDS_Security_Demo_Run_Record_v1.0.md` 복사해 Run Record 작성 (v1.5 §9).

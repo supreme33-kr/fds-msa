@@ -170,11 +170,11 @@ data:
         }
       ]
     }
-  # 3) Target Health / 관측 신뢰성 — S8
+  # 3) Node & Monitoring Health — S8 (v1.5 §1 뷰 이름)
   target-health.json: |
     {
-      "uid": "fds-target-health",
-      "title": "Target Health / 관측 신뢰성",
+      "uid": "fds-node-monitoring-health",
+      "title": "Node & Monitoring Health",
       "tags": ["fds", "demo", "S8"],
       "timezone": "browser",
       "schemaVersion": 39,

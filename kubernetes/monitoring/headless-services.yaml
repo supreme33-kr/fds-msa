@@ -1,0 +1,46 @@
+# 스크레이프 토폴로지 수정 (v1.5 §6 S7a "Pod 재시작·다중 시계열 합산 고려")
+#
+# 문제: Prometheus 가 transaction-api / fds-engine 을 ClusterIP Service 로 스크레이프하면
+#   매 스크레이프가 3개 replica 중 랜덤 1개로 라우팅 → 단일 시계열이 파드마다 다른
+#   카운터 값으로 오르내림 → increase()/rate() 가 매번 "카운터 리셋"으로 오인해 값이
+#   영구 부풀고 버스트 알림이 해소되지 않음.
+#
+# 해결: headless Service(clusterIP: None) 로 파드 IP 를 전부 노출 → Prometheus dns_sd_configs
+#   가 파드별 target(instance=<podIP>:port) 로 스크레이프 → 시계열이 파드별 단조증가 →
+#   sum(rate(...)) 정상.
+#
+# 실 6-Node 이관 시에도 동일 패턴(headless + dns_sd 또는 endpoints SD) 사용.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-api-metrics
+  namespace: fds
+  labels:
+    app: transaction-api
+    role: metrics-discovery
+spec:
+  clusterIP: None            # headless
+  selector:
+    app: transaction-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fds-engine-metrics
+  namespace: fds
+  labels:
+    app: fds-engine
+    role: metrics-discovery
+spec:
+  clusterIP: None            # headless
+  selector:
+    app: fds-engine
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8001

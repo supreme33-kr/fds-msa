@@ -1,0 +1,27 @@
+# S7b / TC-ALERT — 기존 P0 Test Alert 전이 (v1.5 §6 S7b, P1-MON-01 AC11)
+#
+# 앱 업무 지표와 무관하게 Prometheus→Alertmanager 전달 경로만 검증하는 참/거짓 조건.
+#   fire  : expr = vector(1) == 1   → 항상 참 → Firing
+#   clear : expr = vector(1) == 0   → 빈 벡터 → 해소(Resolved)
+# ⚠️ vector(0) 단독은 시계열이 남아 해소되지 않으므로 쓰지 않는다 (v1.5 §6 S7b).
+#
+# 기본 상태 = clear(비활성). 시연은 scripts/demo/s7b_test_alert.sh fire|clear 로 전환.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-p0-test-alert
+  namespace: fds
+data:
+  p0-test-alert.yml: |
+    groups:
+    - name: fds-p0-test-alert
+      rules:
+      - alert: FDSMonitoringPipelineTest
+        expr: vector(1) == 0
+        for: 30s
+        labels:
+          severity: info
+          purpose: p0-pipeline-test
+        annotations:
+          summary: "P0 관측 파이프라인 전달 시험 (Prometheus→Alertmanager)"
+          description: "S7b. 앱 지표와 무관한 참/거짓 조건으로 Firing→수신→해소 전이를 확인한다. 기본은 비활성."

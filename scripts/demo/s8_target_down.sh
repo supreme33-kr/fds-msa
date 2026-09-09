@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# S8 실행 A — 관측 신뢰성: 스크레이프 타깃 다운 → TargetDown Firing → 복구 시 Resolved
-#   (시나리오 v1.4 §3 S8)
+# S8 / TC-TARGET — 관측 신뢰성: 스크레이프 타깃 다운 → TargetDown Firing → 복구 시 Resolved
+#   (시나리오 v1.5 §6 S8. 기본 발표에서는 **선택 항목** — 필수 현장 장애주입 아님.)
 #
 #   kube-state-metrics 를 0 replica 로 내렸다가 다시 올리며 up==0 / TargetDown 을 관측한다.
-#   node-exporter 는 k3s hairpin 로 이미 DOWN(A6, 전용 룰 NodeExporterDown) 이므로 S8 대상에서 제외.
+#   타깃은 prometheus.yml 의 static_config 라 discovery 에서 사라지지 않는다(up=0, 시계열 부재 아님).
+#   Pod/Service 삭제(시계열 부재)와는 다른 시험으로 취급한다(v1.5 §6 S8).
+#   node-exporter / kubelet 은 k3s hairpin 로 상시 DOWN → 전용 info 룰로 분리, S8 대상 아님.
 #
 # Prometheus 조회는 port-forward 없이 `kubectl exec deploy/prometheus -- wget` 로 pod 안에서 수행.
 # 스크립트가 중단(Ctrl-C)돼도 trap 으로 kube-state-metrics 를 replicas=1 로 되돌린다.
