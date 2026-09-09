@@ -130,8 +130,9 @@ BASE_URL=http://10.1.93.50 ./scripts/demo/s7_transaction_burst.sh
 ## 3. S8 — 관측 신뢰성 (타깃 다운)
 
 ```bash
-kubectl -n fds port-forward svc/prometheus 9090:9090 &
-PROM_URL=http://localhost:9090 DOWN_SEC=120 ./scripts/demo/s8_target_down.sh
+# port-forward 불필요 — 스크립트가 kubectl exec 로 pod 안에서 Prometheus 를 조회한다.
+# Ctrl-C 로 중단해도 trap 이 kube-state-metrics 를 replicas=1 로 복구한다.
+DOWN_SEC=120 ./scripts/demo/s8_target_down.sh
 ```
 
 - `kube-state-metrics` 0 replica → `up{job="kube-state-metrics"}==0` → `TargetDown` `firing` (for 1m)
