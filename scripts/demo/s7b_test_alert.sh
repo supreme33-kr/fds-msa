@@ -35,6 +35,7 @@ groups:
     labels:
       severity: info
       purpose: p0-pipeline-test
+      kr: "관측 알림 전달 시험"
     annotations:
       summary: "P0 관측 파이프라인 전달 시험 (Prometheus to Alertmanager)"
       description: "S7b. 참/거짓 조건으로 Firing to 수신 to 해소 전이 확인."

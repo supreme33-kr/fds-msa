@@ -24,6 +24,7 @@ data:
         labels:
           severity: warning
           known_issue: "k3s-hairpin"
+          kr: "노드 지표 수집 실패 (k3s 단일노드 한계)"
         annotations:
           summary: "node-exporter target is down"
           description: "edge01 단일 노드 k3s hairpin 로 DOWN. 실 6노드에서는 정석 타깃. S8 대상 아님."
@@ -35,6 +36,7 @@ data:
         labels:
           severity: info
           known_issue: "k3s-hairpin"
+          kr: "kubelet 지표 수집 실패 (k3s 단일노드 한계)"
         annotations:
           summary: "kubelet scrape down (edge01 k3s 단일노드 hairpin)"
           description: "pod→노드 IP(:10250) 도달 제약. 실 6노드(.102~.105/.107/.108:10250)에서는 정석. S8 대상 아님."
@@ -45,6 +47,7 @@ data:
         for: 1m
         labels:
           severity: critical
+          kr: "관측 대상 다운"
         annotations:
           summary: "scrape target {{ $labels.job }} is down"
           description: "{{ $labels.job }} ({{ $labels.instance }}) 를 1분 이상 스크레이프하지 못함."

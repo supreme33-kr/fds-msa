@@ -107,11 +107,9 @@ data:
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "description": "Value = 알림이 active(pending 진입)된 시각으로부터 경과. ALERTS 메트릭 자체엔 시작시각이 없어 ALERTS_FOR_STATE(activeAt) 로 계산.",
           "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "time() - ALERTS_FOR_STATE{alertstate=\"firing\"}", "format": "table", "instant": true } ],
+          "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "alertstate": true, "alertname": true, "job": true, "instance": true, "known_issue": true, "purpose": true, "rule_id": true, "tier": true, "container": true, "endpoint": true, "namespace": true, "pod": true, "service": true }, "renameByName": { "kr": "알림", "severity": "심각도", "Value": "firing 지속" }, "indexByName": { "kr": 0, "severity": 1, "Value": 2 } } } ],
           "fieldConfig": { "defaults": {}, "overrides": [
-            { "matcher": { "id": "byName", "options": "Time" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
-            { "matcher": { "id": "byName", "options": "__name__" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
-            { "matcher": { "id": "byName", "options": "alertstate" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
-            { "matcher": { "id": "byName", "options": "Value" }, "properties": [ { "id": "unit", "value": "dtdurations" }, { "id": "displayName", "value": "firing 지속" } ] }
+            { "matcher": { "id": "byName", "options": "firing 지속" }, "properties": [ { "id": "unit", "value": "dtdurations" } ] }
           ] },
           "options": { "showHeader": true, "sortBy": [ { "displayName": "firing 지속", "desc": true } ] }
         },
@@ -138,8 +136,8 @@ data:
           "id": 9, "type": "state-timeline", "title": "알림 발생 타임라인 — firing 구간 (언제 떴다 사라졌나)",
           "gridPos": { "h": 7, "w": 24, "x": 0, "y": 20 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "ALERTS{alertstate=\"firing\"}", "legendFormat": "{{alertname}}" } ],
-          "fieldConfig": { "defaults": { "custom": { "fillOpacity": 80, "lineWidth": 0 }, "color": { "mode": "fixed", "fixedColor": "red" }, "mappings": [ { "type": "value", "options": { "1": { "text": "firing" } } } ] }, "overrides": [] },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "ALERTS{alertstate=\"firing\"}", "legendFormat": "{{kr}}" } ],
+          "fieldConfig": { "defaults": { "custom": { "fillOpacity": 80, "lineWidth": 0 }, "color": { "mode": "fixed", "fixedColor": "red" }, "mappings": [ { "type": "value", "options": { "1": { "text": "발생 중" } } } ] }, "overrides": [] },
           "options": { "mergeValues": true, "showValue": "never", "rowHeight": 0.9, "legend": { "displayMode": "list", "placement": "bottom" } }
         },
         {
@@ -338,11 +336,9 @@ data:
             { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
               "expr": "time() - ALERTS_FOR_STATE{alertstate=\"firing\"}", "format": "table", "instant": true }
           ],
+          "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "alertstate": true, "alertname": true, "job": true, "instance": true, "known_issue": true, "purpose": true, "rule_id": true, "tier": true, "container": true, "endpoint": true, "namespace": true, "pod": true, "service": true }, "renameByName": { "kr": "알림", "severity": "심각도", "Value": "firing 지속" }, "indexByName": { "kr": 0, "severity": 1, "Value": 2 } } } ],
           "fieldConfig": { "defaults": {}, "overrides": [
-            { "matcher": { "id": "byName", "options": "Time" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
-            { "matcher": { "id": "byName", "options": "__name__" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
-            { "matcher": { "id": "byName", "options": "alertstate" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
-            { "matcher": { "id": "byName", "options": "Value" }, "properties": [ { "id": "unit", "value": "dtdurations" }, { "id": "displayName", "value": "firing 지속" } ] }
+            { "matcher": { "id": "byName", "options": "firing 지속" }, "properties": [ { "id": "unit", "value": "dtdurations" } ] }
           ] },
           "options": { "showHeader": true, "sortBy": [ { "displayName": "firing 지속", "desc": true } ] }
         },

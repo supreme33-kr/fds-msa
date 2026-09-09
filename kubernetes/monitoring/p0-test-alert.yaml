@@ -22,6 +22,7 @@ data:
         labels:
           severity: info
           purpose: p0-pipeline-test
+          kr: "관측 알림 전달 시험"
         annotations:
           summary: "P0 관측 파이프라인 전달 시험 (Prometheus→Alertmanager)"
           description: "S7b. 앱 지표와 무관한 참/거짓 조건으로 Firing→수신→해소 전이를 확인한다. 기본은 비활성."

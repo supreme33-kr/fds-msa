@@ -34,15 +34,15 @@ pause(){ if [ "$AUTO" = 1 ]; then sleep "${1:-4}"; else read -rp $'\n'"  ⏎ 다
 pexec(){ kubectl -n "$PROM_NS" exec "deploy/$PROM_DEPLOY" -- "$@" 2>/dev/null; }
 amexec(){ kubectl -n "$AM_NS" exec "deploy/$AM_DEPLOY" -- "$@" 2>/dev/null; }
 
-prom_alerts(){  # firing/pending 요약
+prom_alerts(){  # firing/pending 요약 (한글 표시명 kr 라벨)
   pexec wget -qO- 'localhost:9090/api/v1/query?query=ALERTS' \
-  | sed 's/},{/}\n{/g' | grep -oE '"alert(name|state)":"[^"]*"' | paste - - \
-  | sed -E 's/.*"alertname":"([^"]*)".*"alertstate":"([^"]*)".*/  \1 = \2/' | sort -u
+  | sed 's/},{/}\n{/g' | grep -oE '"alertstate":"[^"]*"|"kr":"[^"]*"' | paste - - \
+  | sed -E 's/.*"alertstate":"([^"]*)".*"kr":"([^"]*)".*/  \2 = \1/' | sort -u
 }
-am_active(){    # Alertmanager 가 실제로 받은 알림 (alertname, 한 줄에 하나)
+am_active(){    # Alertmanager 가 실제로 받은 알림 (한글 표시명, 한 줄에 하나)
   local out
   out="$(amexec wget -qO- 'localhost:9093/api/v2/alerts' \
-        | grep -oE '"alertname":"[^"]*"' | sed 's/.*:"//;s/"$//' | sort -u | sed 's/^/  ↳ /')"
+        | grep -oE '"kr":"[^"]*"' | sed 's/.*:"//;s/"$//' | sort -u | sed 's/^/  ↳ /')"
   printf '%s\n' "${out:-  (없음)}"
 }
 prom_state(){   # $1 = alertname

@@ -28,6 +28,7 @@ data:
           severity: warning
           rule_id: "R02"
           tier: "optional-hardening"
+          kr: "이상거래 급증 (고액거래 R02)"
         annotations:
           summary: "이상거래 급증 감지 — FDS R02(고액) 탐지가 5분간 20건 초과 (threshold NOT VERIFIED)"
           description: "한 계정의 고액·연속 거래 패턴. 거래는 201 로 통과하며 차단하지 않는다 — 탐지·기록·화면 알림만. 부하가 멎으면 5분 내 자동 해소."
@@ -38,6 +39,7 @@ data:
         labels:
           severity: info
           tier: "optional-hardening"
+          kr: "이상거래 급증 (반복·심야 등 R01/R04/R07)"
         annotations:
           summary: "FDS {{ $labels.rule_id }} 탐지 급증 (참고, threshold NOT VERIFIED)"
           description: "rule_id 별 5분 증가분 > 30. 선택적 고도화 후보."
@@ -56,6 +58,7 @@ data:
         labels:
           severity: warning
           tier: "optional-hardening"
+          kr: "승인되지 않은 파드 감지"
         annotations:
           summary: "fds namespace 에 승인되지 않은 파드 존재"
           description: "예상 app 라벨이 아닌 파드가 fds ns 에서 관측됨. 선택적 고도화 후보, coarse heuristic."
