@@ -25,10 +25,22 @@ data:
           summary: "node-exporter target is down"
           description: "edge01 단일 노드 k3s hairpin 로 DOWN(A6). 실 6노드(.105/.107/.108:9100)에서는 정석 타깃."
 
+      # kubelet(10250) 도 pod→노드 자기 IP 도달 제약(No route to host)으로 k3s 단일노드에선 DOWN.
+      # node-exporter 와 동일 원인. 실 6노드에서는 정석. S8(TargetDown) 대상에서 제외 — info only.
+      - alert: KubeletScrapeDownK3s
+        expr: up{job=~"kubelet|kubelet-cadvisor"} == 0
+        for: 2m
+        labels:
+          severity: info
+          known_issue: "k3s-hairpin"
+        annotations:
+          summary: "kubelet scrape down (edge01 k3s 단일노드 hairpin)"
+          description: "pod→노드 IP(:10250) 도달 제약. 실 6노드(.102~.105/.107/.108:10250)에서는 정석. S8 대상 아님."
+
       # --- S8: 관측 신뢰성 — 스크레이프 타깃/의존서비스 다운 ---
-      # node-exporter 는 위 전용 룰로 처리하므로 여기서는 제외(중복 방지 + 정직 표기).
+      # node-exporter / kubelet 은 위 known-issue 전용 룰로 처리 → 여기서는 제외(중복·노이즈 방지 + 정직 표기).
       - alert: TargetDown
-        expr: up{job=~"transaction-api|fds-engine|kube-state-metrics|kubelet"} == 0
+        expr: up{job=~"transaction-api|fds-engine|kube-state-metrics"} == 0
         for: 1m
         labels:
           severity: critical

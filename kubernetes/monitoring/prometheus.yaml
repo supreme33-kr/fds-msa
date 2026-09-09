@@ -31,10 +31,15 @@ data:
           - targets: ['kube-state-metrics.monitoring-api.svc.cluster.local:8080']
 
       # --- A4 (시나리오 v1.4 §2) : kubelet(10250) scrape 타깃 ---
-      # edge01 단일 노드 k3s → static target 로 단순화. SA 토큰(자동 마운트)으로 인증.
       # RBAC: prometheus-rbac.yaml (ServiceAccount prometheus + ClusterRole nodes/metrics).
       # 네트워크: allow-prometheus-egress-kubelet.yaml (fds ns egress → .50:10250).
-      # 실 6노드: static targets 를 .105/.107/.108:10250 로 교체하거나 kubernetes_sd(role: node) 로 전환.
+      #
+      # ⚠️ edge01 단일 노드 k3s 에서는 이 타깃이 DOWN 이다("No route to host" — pod 가 자기
+      #    노드 IP :10250 으로 도달 불가). node-exporter(:9100) 와 동일한 hairpin 제약이며
+      #    시나리오 §6 탐지 한계로 정직하게 발표한다. 알림은 KubeletScrapeDownK3s(info) 로만,
+      #    S8/TargetDown 대상에서는 제외.
+      # ✅ 실 6-Node 클러스터: Prometheus 가 monitor01(외부 VM) 에 위치 → hairpin 없음.
+      #    static targets 를 .102~.105/.107/.108:10250 로 교체하거나 kubernetes_sd(role: node) 전환.
       - job_name: 'kubelet'
         scheme: https
         tls_config:

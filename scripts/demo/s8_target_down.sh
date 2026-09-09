@@ -29,9 +29,14 @@ promq() {
 }
 
 alerts() {
-  kubectl -n "${PROM_NS}" exec "deploy/${PROM_DEPLOY}" -- \
-    wget -qO- "localhost:9090/api/v1/alerts" 2>/dev/null \
-  | grep -o '"alertname":"[^"]*","alertstate":"[^"]*"' | paste -sd' , ' - || echo "(no alerts)"
+  # /api/v1/alerts 는 상태 필드가 state(라벨 하위 alertname) 라 파싱이 번거로움 →
+  # ALERTS{} 시계열 사용. 라벨 정렬상 alertname < alertstate 이므로 pair 안정적.
+  local s
+  s="$(kubectl -n "${PROM_NS}" exec "deploy/${PROM_DEPLOY}" -- \
+        wget -qO- 'localhost:9090/api/v1/query?query=ALERTS' 2>/dev/null \
+      | grep -oE '"alert(name|state)":"[^"]*"' | paste - - \
+      | sed -E 's/.*"alertname":"([^"]*)".*"alertstate":"([^"]*)".*/\1=\2/' | sort -u | paste -sd',' -)"
+  echo "${s:-(none)}"
 }
 
 restore_ksm() {

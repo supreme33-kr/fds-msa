@@ -7,7 +7,7 @@
 #   Phase 3  지표 스냅샷 → REPORT.md / capture.html
 #
 # 산출물:  docs/evidence/_local/s7s8_<timestamp>/
-#   - 00_env.txt  10_s7_timeline.log  11_s7_alerts_before_after.json
+#   - 00_env.txt  10_s7_timeline.log  11_s7_alerts_before_after.txt
 #   - 20_s8_timeline.log  30_metrics.txt
 #   - REPORT.md   capture.html
 #
@@ -43,7 +43,12 @@ alerts_snap() {
   | grep -oE '"alert(name|state)":"[^"]*"' | paste - - \
   | sed -E 's/.*"alertname":"([^"]*)".*"alertstate":"([^"]*)".*/\1=\2/' | sort -u | paste -sd',' -
 }
-burst_active() { promq_raw 'ALERTS{alertname="FDSDetectionBurst",alertstate="firing"}' | grep -q '"value"'; }
+# FDSDetectionBurst 상태: firing / pending / (빈 문자열=inactive)
+burst_state() {
+  # FDSDetectionBurstAnyRule(info) 와 구분하기 위해 alertname 정확히 매칭
+  promq_raw 'ALERTS' | sed 's/},{/}\n{/g' | grep '"alertname":"FDSDetectionBurst"' \
+  | grep -oE '"alertstate":"[^"]*"' | head -1 | sed 's/.*:"//;s/"$//'
+}
 
 ################################################################################
 echo; echo "===== Phase 0 : 환경 스냅샷 ====="
@@ -62,8 +67,7 @@ echo; echo "===== Phase 0 : 환경 스냅샷 ====="
 
 ################################################################################
 echo; echo "===== Phase 1 : S7 이상거래 급증 ====="
-alerts_snap > /dev/null
-promq_raw 'ALERTS' > "${out}/11_s7_alerts_before_after.json"; echo "," >> "${out}/11_s7_alerts_before_after.json"
+{ echo "=== BEFORE (부하 전) $(date -Iseconds) ==="; promq_raw 'ALERTS'; echo; } > "${out}/11_s7_alerts_before_after.txt"
 
 : > "${out}/10_s7_timeline.log"
 (
@@ -76,18 +80,27 @@ echo "[cap] S7 부하 실행 (${S7_DURATION}s)..."
 BASE_URL="${BASE_URL}" ACCOUNT_ID="${ACCOUNT_ID}" DURATION_SEC="${S7_DURATION}" \
   "${here}/s7_transaction_burst.sh" | tee "${out}/10_s7_burst_stdout.txt"
 
-echo "[cap] 부하 종료. FDSDetectionBurst 해소까지 최대 ${S7_WAIT_MAX}s 폴링..."
-waited=0
-while (( waited < S7_WAIT_MAX )); do
-  if burst_active; then
-    echo "  [+${waited}s] FDSDetectionBurst=firing"
-  else
-    echo "  [+${waited}s] FDSDetectionBurst=cleared"; break
-  fi
-  sleep "${POLL}"; waited=$((waited+POLL))
+echo "[cap] FDSDetectionBurst firing 대기 (최대 180s; for:1m 이라 부하 종료 후 ~30s 내 예상)..."
+w=0; saw_firing=no
+while (( w < 180 )); do
+  st="$(burst_state)"; echo "  [+${w}s] FDSDetectionBurst=${st:-inactive}"
+  [ "${st}" = "firing" ] && { saw_firing=yes; break; }
+  sleep "${POLL}"; w=$((w+POLL))
 done
+
+if [ "${saw_firing}" = yes ]; then
+  echo "[cap] firing 확인. 해소까지 폴링 (최대 ${S7_WAIT_MAX}s)..."
+  waited=0
+  while (( waited < S7_WAIT_MAX )); do
+    st="$(burst_state)"; echo "  [+$((180+waited))s] FDSDetectionBurst=${st:-cleared}"
+    [ -z "${st}" ] && { echo "  → resolved"; break; }
+    sleep "${POLL}"; waited=$((waited+POLL))
+  done
+else
+  echo "[cap] WARN: firing 미관측. Phase 3 의 R02 increase 값과 alert 룰 로드 여부 확인 필요."
+fi
 kill "${poller}" 2>/dev/null || true
-promq_raw 'ALERTS' >> "${out}/11_s7_alerts_before_after.json"
+{ echo "=== AFTER (해소 후) $(date -Iseconds) ==="; promq_raw 'ALERTS'; echo; } >> "${out}/11_s7_alerts_before_after.txt"
 
 ################################################################################
 echo; echo "===== Phase 2 : S8 타깃 다운 ====="
@@ -119,7 +132,7 @@ cat > "${out}/REPORT.md" <<EOF
 - 거래 응답: 전건 201 (차단 없음 — 탐지·기록만) → \`10_s7_burst_stdout.txt\`
 - \`fds_detected_total{rule_id="R02"}\` 5m 증가분(캡처 시점): **${r02now}** (임계 20)
 - \`FDSDetectionBurst\` firing → 부하 종료 후 해소: \`10_s7_timeline.log\`
-- 알림 전/후 원본: \`11_s7_alerts_before_after.json\`
+- 알림 전/후 원본: \`11_s7_alerts_before_after.txt\`
 
 ## S8 — 관측 신뢰성 (타깃 다운)
 - \`kube-state-metrics\` replicas 0 → \`up{job="kube-state-metrics"}==0\` → \`TargetDown\` firing
