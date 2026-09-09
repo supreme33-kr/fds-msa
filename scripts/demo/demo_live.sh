@@ -64,7 +64,9 @@ EOF
 step0(){
   say "0. 베이스라인 — 지금 활성 알림"
   hr; prom_alerts; hr
-  note "node-exporter/kubelet 은 k3s 단일노드 hairpin 로 상시 firing(info). 실 6노드에서 정석."
+  note "여기 보이는 NodeExporterDown / KubeletScrapeDownK3s 2건은 k3s 단일노드 hairpin 로"
+  note "상시 firing(info) — 결함이 아니라 E-K3S 한계이며 실 6노드에서 정석이다. 이 데모는 이 위에"
+  note "새로 뜨는 알림(FDSMonitoringPipelineTest, TargetDown)의 전이만 본다."
   pause 3
 }
 
@@ -125,7 +127,7 @@ stepZ(){
   kubectl -n "$NS_KSM" scale deploy/"$DEPLOY_KSM" --replicas=1 >/dev/null 2>&1 || true
   hr; prom_alerts; hr
   note "FDSMonitoringPipelineTest / TargetDown 이 목록에 없으면 정리 완료."
-  note "상시 firing(NodeExporterDown/KubeletScrapeDownK3s)은 k3s 한계 — 발표에서 그대로 설명."
+  note "남는 NodeExporterDown / KubeletScrapeDownK3s 2건은 k3s 한계 — 발표에서 그대로 설명."
 }
 
 banner

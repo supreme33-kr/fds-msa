@@ -8,8 +8,9 @@ data:
     global:
       scrape_interval: 15s
     rule_files:
-      - /etc/prometheus/rules/*.yml       # prometheus-alert-rules CM
+      - /etc/prometheus/rules/*.yml       # prometheus-alert-rules CM (core)
       - /etc/prometheus/rules-p0/*.yml    # prometheus-p0-test-alert CM (S7b)
+      - /etc/prometheus/rules-opt/*.yml   # prometheus-alert-rules-optional CM (E-CANON 전용, optional)
     alerting:
       alertmanagers:
         - static_configs:
@@ -111,6 +112,8 @@ spec:
               mountPath: /etc/prometheus/rules/
             - name: p0-test-alert
               mountPath: /etc/prometheus/rules-p0/
+            - name: alert-rules-optional
+              mountPath: /etc/prometheus/rules-opt/
       volumes:
         - name: config
           configMap:
@@ -123,6 +126,10 @@ spec:
         - name: p0-test-alert
           configMap:
             name: prometheus-p0-test-alert
+        - name: alert-rules-optional
+          configMap:
+            name: prometheus-alert-rules-optional
+            optional: true          # 없어도 기동 (E-K3S 는 이 CM 을 적용하지 않음)
 ---
 apiVersion: v1
 kind: Service

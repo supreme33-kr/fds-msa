@@ -18,7 +18,8 @@
 | 항목 | 파일 | 내용 |
 |---|---|---|
 | **A1** Alertmanager 화면 수신 | `alertmanager-config.yaml` | route(group_by)+inhibit_rules+`screen-only` receiver. 외부 integration 없음(메일/SMS/webhook). [BL] §11.2 |
-| **A2** alert rules (2 그룹) | `alert-rules.yaml` | `fds-core-observability`: `NodeExporterDown`·`KubeletScrapeDownK3s`(info)·`TargetDown`. `fds-optional-hardening`: `FDSDetectionBurst`·`FDSDetectionBurstAnyRule`·`UnexpectedPodInFdsNs` — **v1.5 §1 "선택적 고도화 후보", P0 아님, 임계값 미확정** |
+| **A2** alert rules (core) | `alert-rules.yaml` | `fds-core-observability`: `NodeExporterDown`·`KubeletScrapeDownK3s`(info)·`TargetDown` |
+| A2 optional (**E-CANON 전용**) | `alert-rules-optional.yaml` | `fds-optional-hardening`: `FDSDetectionBurst` 등 — v1.5 §1 "선택적 고도화 후보". **E-K3S 에는 적용 안 함**(ClusterIP 라운드로빈 상시 오탐). prometheus volume 은 `optional: true` |
 | **S7b** P0 Test Alert | `p0-test-alert.yaml` | `FDSMonitoringPipelineTest` — 기본 비활성(`vector(1)==0`). 시연 시 `s7b_test_alert.sh` 가 `==1`로 전환 |
 | **A3** Grafana 3 뷰 + PVC | `grafana.yaml`, `grafana-dashboards.yaml` | emptyDir→PVC `grafana-data`(local-path 1Gi). `Application & FDS` / `Kubernetes Workload` / **`Node & Monitoring Health`** |
 | **A4** kubelet scrape | `prometheus.yaml`, `prometheus-rbac.yaml`, `allow-prometheus-egress-kubelet.yaml` | `kubelet`/`kubelet-cadvisor` static job + SA `prometheus` + ClusterRole `nodes/metrics` + egress NP. `--web.enable-lifecycle` |
