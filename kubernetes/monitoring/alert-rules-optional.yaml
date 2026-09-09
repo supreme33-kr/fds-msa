@@ -1,9 +1,9 @@
 # 선택적 고도화 후보 알림 (v1.5 §1) — 기존 P0 에 자동 편입하지 않는다. 임계값 전부 NOT VERIFIED.
+# 발표에서 "기존 P0" 로 소개하지 않고 "이렇게 확장 가능" 으로 소개한다.
 #
-# ⚠️ E-CANON 전용. E-K3S(edge01 단일 노드)에는 적용하지 않는다:
-#    앱을 ClusterIP 로 스크레이프하므로(파드 IP 직결 불가) replica 3 라운드로빈에 의해
-#    increase()/rate() 가 부풀어 FDSDetectionBurst 계열이 상시 오탐(firing)한다.
-#    → E-CANON 에서 파드 단위 스크레이프(headless-services.yaml + dns_sd) 전환 후 이 파일을 적용.
+# 적용 전제: fds-engine replicas=1 (E-K3S). 3 replica + ClusterIP 스크레이프면 라운드로빈으로
+#   FDSDetectionBurst 가 오탐하므로 반드시 replicas=1 상태에서만 적용한다.
+#   E-CANON(정본 다중 노드)에서는 headless-services.yaml + dns_sd 파드 단위 스크레이프 후 적용.
 #
 # prometheus.yml 의 rule_files 는 /etc/prometheus/rules-opt/*.yml 도 glob 하며,
 # 해당 volume 은 configMap optional: true 라 이 ConfigMap 이 없어도 Prometheus 는 정상 기동한다.
@@ -18,8 +18,8 @@ data:
     - name: fds-optional-hardening
       rules:
 
-      # 한 계정 연속·반복 거래로 특정 Rule 탐지가 급증하는 패턴.
-      # rule_id 는 응답의 fds_rules[].triggered 로 확인하고 특정하지 않는다. 예시로 R02 고정.
+      # 한 계정 연속·반복 거래로 특정 Rule 탐지가 급증 = 이상거래 급증 의심.
+      # rule_id 예시로 R02(고액) 고정. 실제 트리거 Rule 은 거래 응답 fds_rules[].triggered 로 확인.
       - alert: FDSDetectionBurst
         expr: sum(increase(fds_detected_total{rule_id="R02"}[5m])) > 20
         for: 1m
@@ -28,8 +28,8 @@ data:
           rule_id: "R02"
           tier: "optional-hardening"
         annotations:
-          summary: "FDS R02 탐지 급증 (5m 증가분 > 20, threshold NOT VERIFIED)"
-          description: "선택적 고도화 후보. 거래는 201 유지(차단 없음) — 탐지·기록만."
+          summary: "이상거래 급증 감지 — FDS R02(고액) 탐지가 5분간 20건 초과 (threshold NOT VERIFIED)"
+          description: "한 계정의 고액·연속 거래 패턴. 거래는 201 로 통과하며 차단하지 않는다 — 탐지·기록·화면 알림만. 부하가 멎으면 5분 내 자동 해소."
 
       - alert: FDSDetectionBurstAnyRule
         expr: sum by (rule_id) (increase(fds_detected_total[5m])) > 30

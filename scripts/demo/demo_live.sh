@@ -94,12 +94,36 @@ stepA(){
 
 stepB(){
   say "B. [공격] 이상거래 급증 — 한 합성 계정, 고액 withdrawal 연속"
-  note "정상 통제(탐지·기록)만 동작. 거래는 201 로 통과한다."
-  BASE_URL="$BASE_URL" ACCOUNT_ID="SIM_live_$(date +%H%M%S)" COUNT="${B_COUNT:-25}" INTERVAL_SEC=0.4 \
+  note "정상 통제(탐지·기록)만 동작. 거래는 201 로 통과하며 차단하지 않는다."
+  BASE_URL="$BASE_URL" ACCOUNT_ID="SIM_live_$(date +%H%M%S)" COUNT="${B_COUNT:-40}" INTERVAL_SEC=0.3 \
     "$here/s7a_app_txn.sh" || true
-  note "→ 응답의 fds_rules[].triggered 로 어떤 Rule 이 걸렸는지 표시됨(R01/R02 등). 거래 건수와 동일시하지 않음."
-  note "→ 저장 확인(승인 운영 경로):"
-  echo "     psql -h 10.1.93.55 -U fds_app -d fdsdb -c \"select transaction_id,amount,fds_detected,fds_rules from transactions order by received_at desc limit 5;\""
+  note "→ 응답 fds_rules[].triggered 로 걸린 Rule 확인(R01/R02 등). 거래 건수와 동일시하지 않음."
+
+  # FDSDetectionBurst = 이상거래 급증 알림 (선택적 고도화 후보, fds-engine replicas=1 전제)
+  if pexec wget -qO- localhost:9090/api/v1/rules | grep -q '"name":"FDSDetectionBurst"'; then
+    say "B. 이상거래 급증 알림 — FDSDetectionBurst (for:1m, 부하 종료 후 ~30s 내 firing 예상)"
+    local seen=no
+    for i in 1 2 3 4 5 6 7 8; do
+      sleep 15
+      st="$(prom_state FDSDetectionBurst)"
+      printf '  [+%03ds] FDSDetectionBurst=%s\n' "$((i*15))" "${st:-inactive}"
+      [ "$st" = firing ] && { seen=yes; break; }
+    done
+    hr
+    if [ "$seen" = yes ]; then
+      printf '%s  ▶ 이상거래 급증 알림 = FIRING%s\n' "$c_wn" "$c_0"
+      echo "  Alertmanager 수신:"; am_active
+      note "→ 옆 창 Alertmanager UI / Grafana '현재 Firing 알림' 에 이상거래 급증 줄이 떴는지 확인."
+      note "→ 부하가 멎었으므로 약 5분 뒤 자동 해소(Resolved)된다. 발표에서는 여기서 다음 단계로 넘어가도 됨."
+    else
+      note "→ 아직 firing 전. threshold(5m 증가분>20) 확인 또는 잠시 더 대기."
+    fi
+    hr
+  else
+    note "→ FDSDetectionBurst 규칙 미로드(E-K3S 기본). 이상거래 탐지는 응답·DB·Grafana 그래프로만 확인."
+    note "   알림까지 보려면: fds-engine replicas=1 + kubectl apply -f kubernetes/monitoring/alert-rules-optional.yaml + reload"
+  fi
+  note "저장 확인(승인 운영 경로): psql -h 10.1.93.55 -U fds_app -d fdsdb -c \"select transaction_id,amount,fds_detected,fds_rules from transactions order by received_at desc limit 5;\""
   pause 5
 }
 

@@ -6,7 +6,12 @@ metadata:
   labels:
     app: fds-engine
 spec:
-  replicas: 3
+  # E-K3S(edge01 단일 노드) 시연: replicas=1.
+  #   Prometheus 가 ClusterIP 로 스크레이프하는데(파드 IP 직결 "No route to host") replica 가
+  #   여럿이면 매 스크레이프가 다른 파드로 라운드로빈돼 fds_detected_total 카운터가 리셋으로
+  #   오인된다 → increase()/rate() 오탐. 1 replica 면 단일 시계열이라 FDSDetectionBurst 정상 동작.
+  # E-CANON(정본 다중 노드): replicas=3 + headless-services.yaml 로 파드 단위 스크레이프.
+  replicas: 1
   selector:
     matchLabels:
       app: fds-engine

@@ -47,6 +47,13 @@ kubectl apply -f kubernetes/monitoring/alertmanager-config.yaml \
   -f kubernetes/monitoring/allow-prometheus-egress-kubelet.yaml
 kubectl -n fds rollout restart deploy/prometheus deploy/grafana
 kubectl -n monitoring-api rollout restart deploy/kube-state-metrics
+
+# --- 이상거래 급증 알림(FDSDetectionBurst) 을 시연에 포함하려면 (선택적 고도화 후보, v1.5 §1) ---
+# 전제: fds-engine replicas=1 (라운드로빈 오탐 회피). base 매니페스트가 이미 1.
+kubectl apply -f kubernetes/base/deployment-fds-engine.yaml   # replicas=1
+kubectl apply -f kubernetes/monitoring/alert-rules-optional.yaml
+kubectl -n fds exec deploy/prometheus -- wget -qO- --post-data='' localhost:9090/-/reload
+#   확인: rules 목록에 FDSDetectionBurst / FDSDetectionBurstAnyRule / UnexpectedPodInFdsNs 추가
 ```
 
 ### 1.1 배포 확인
@@ -77,6 +84,9 @@ BASE_URL=http://10.1.93.50 COUNT=40 ./scripts/demo/s7a_app_txn.sh --with-metrics
 - 트리거된 Rule 은 **응답 `fds_rules[].triggered`** 로 집계한다. 금액만 보고 R02 라고 단정하지 않는다.
 - `201` = 자원 생성. 업무 승인·실제 송금 아님.
 - 저장 확인은 승인 운영 경로에서 `psql` raw SELECT (합성 계정). Grafana `Application & FDS` 동일 시간대.
+- **이상거래 급증 알림(선택)**: `alert-rules-optional.yaml` 적용 시 부하 종료 ~1분 뒤 `FDSDetectionBurst`
+  (annotation "이상거래 급증 감지") 가 firing → Alertmanager UI / Grafana "현재 Firing 알림" 에 등장 →
+  부하가 멎었으므로 ~5분 뒤 자동 해소. v1.5 §1 "선택적 고도화 후보" 로 소개(기존 P0 아님).
 
 | 확인 | 기대 | 결과 |
 |---|---|---|
