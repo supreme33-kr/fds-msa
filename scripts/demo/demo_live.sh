@@ -39,14 +39,21 @@ prom_alerts(){  # firing/pending 요약
   | sed 's/},{/}\n{/g' | grep -oE '"alert(name|state)":"[^"]*"' | paste - - \
   | sed -E 's/.*"alertname":"([^"]*)".*"alertstate":"([^"]*)".*/  \1 = \2/' | sort -u
 }
-am_active(){    # Alertmanager 가 실제로 받은 알림
-  amexec wget -qO- 'localhost:9093/api/v2/alerts' \
-  | sed 's/},{/}\n{/g' | grep -oE '"alertname":"[^"]*"|"status":\{"state":"[^"]*"' \
-  | sed -E 's/"alertname":"([^"]*)"/  ↳ \1/; s/.*"state":"([^"]*)"/     status=\1/' | paste - -
+am_active(){    # Alertmanager 가 실제로 받은 알림 (alertname, 한 줄에 하나)
+  local out
+  out="$(amexec wget -qO- 'localhost:9093/api/v2/alerts' \
+        | grep -oE '"alertname":"[^"]*"' | sed 's/.*:"//;s/"$//' | sort -u | sed 's/^/  ↳ /')"
+  printf '%s\n' "${out:-  (없음)}"
 }
 prom_state(){   # $1 = alertname
   pexec wget -qO- 'localhost:9090/api/v1/query?query=ALERTS' | sed 's/},{/}\n{/g' \
   | grep "\"alertname\":\"$1\"" | grep -oE '"alertstate":"[^"]*"' | head -1 | sed 's/.*:"//;s/"$//'
+}
+ksm_up(){       # up{job="kube-state-metrics"} 의 현재 값 (0/1) 또는 "-"
+  local v
+  v="$(pexec wget -qO- 'localhost:9090/api/v1/query?query=up%7Bjob%3D%22kube-state-metrics%22%7D' \
+       | grep -oE '"value":\[[0-9.]+,"[0-9]+"\]' | head -1 | sed -E 's/.*,"([0-9]+)"\].*/\1/')"
+  printf '%s' "${v:--}"
 }
 
 banner(){
@@ -100,23 +107,23 @@ stepC(){
   say "C. [공격] 관측 타깃 다운 — kube-state-metrics 강제 중지"
   kubectl -n "$NS_KSM" scale deploy/"$DEPLOY_KSM" --replicas=0
   note "up{job=\"kube-state-metrics\"} 가 0 이 되고, for:1m 후 TargetDown 이 pending→firing."
-  for i in 1 2 3 4 5 6; do
-    sleep 25
+  for i in 1 2 3 4 5 6 7 8; do
+    sleep 20
     st="$(prom_state TargetDown)"
-    printf '  [+%ds] TargetDown = %s   up(ksm)=%s\n' "$((i*25))" "${st:-inactive}" \
-      "$(pexec wget -qO- 'localhost:9090/api/v1/query?query=up%7Bjob%3D%22kube-state-metrics%22%7D' | grep -oE '"value":\[[0-9.]+,"[0-9]"\]' | grep -oE '"[0-9]"$' | tr -d '"')"
+    printf '  [+%03ds]  up(ksm)=%s   TargetDown=%s\n' "$((i*20))" "$(ksm_up)" "${st:-inactive}"
     [ "$st" = firing ] && break
   done
-  say "C. Alertmanager 수신"
+  say "C. Alertmanager 수신 (실제로 받은 알림)"
   hr; am_active; hr
+  note "→ 옆 창 Alertmanager UI 에 TargetDown 이 떴는지 함께 확인."
   say "C. [복구] kube-state-metrics 재기동"
   kubectl -n "$NS_KSM" scale deploy/"$DEPLOY_KSM" --replicas=1
   kubectl -n "$NS_KSM" rollout status deploy/"$DEPLOY_KSM" --timeout=90s || true
-  for i in 1 2 3 4 5 6; do
-    sleep 25
+  for i in 1 2 3 4 5 6 7 8; do
+    sleep 20
     st="$(prom_state TargetDown)"
-    printf '  [복구 +%ds] TargetDown = %s\n' "$((i*25))" "${st:-resolved}"
-    [ -z "$st" ] && { echo "  → Resolved"; break; }
+    printf '  [복구 +%03ds]  up(ksm)=%s   TargetDown=%s\n' "$((i*20))" "$(ksm_up)" "${st:-resolved}"
+    [ -z "$st" ] && { printf '%s  → Resolved (Alertmanager 활성 목록에서도 해제)%s\n' "$c_ok" "$c_0"; break; }
   done
   pause 3
 }
