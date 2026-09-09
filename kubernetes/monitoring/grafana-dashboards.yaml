@@ -1,0 +1,220 @@
+# A3 (시나리오 v1.4 §2) — Grafana 3개 provisioned 대시보드 + PVC.
+# 대시보드 provisioning 은 read-only ConfigMap 기반. UI 편집분은 PVC(grafana-data)에 저장된다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: fds
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path      # k3s 기본 provisioner. 실 클러스터는 해당 StorageClass 로 교체.
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-provider
+  namespace: fds
+data:
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'fds-demo'
+        orgId: 1
+        folder: 'FDS'
+        type: file
+        disableDeletion: false
+        allowUiUpdates: true
+        updateIntervalSeconds: 30
+        options:
+          path: /etc/grafana/dashboards
+          foldersFromFilesStructure: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: fds
+data:
+  # 1) Application & FDS — S7 핵심 (이상거래 급증 → 임계선 초과)
+  app-fds.json: |
+    {
+      "uid": "fds-app-fds",
+      "title": "Application & FDS",
+      "tags": ["fds", "demo", "S7"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "time": { "from": "now-30m", "to": "now" },
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "FDS 탐지 rate (rule_id 별) — R02 임계선 20/5m",
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (rule_id) (increase(fds_detected_total[5m]))", "legendFormat": "{{rule_id}}" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line", "fillOpacity": 10 },
+              "thresholds": { "mode": "absolute", "steps": [
+                { "value": null, "color": "green" }, { "value": 20, "color": "red" } ] }
+            },
+            "overrides": []
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "right" } }
+        },
+        {
+          "type": "timeseries",
+          "title": "거래 저장 성공/실패 rate (1m)",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(rate(transaction_save_success_total[1m]))", "legendFormat": "success/s" },
+            { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(rate(transaction_save_failure_total[1m]))", "legendFormat": "failure/s" }
+          ],
+          "fieldConfig": { "defaults": {}, "overrides": [] }
+        },
+        {
+          "type": "stat",
+          "title": "source_ip 누락 누계",
+          "gridPos": { "h": 8, "w": 6, "x": 12, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(missing_client_ip_total)" }
+          ],
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" },
+            "thresholds": { "mode": "absolute", "steps": [
+              { "value": null, "color": "green" }, { "value": 1, "color": "yellow" } ] } }, "overrides": [] }
+        },
+        {
+          "type": "stat",
+          "title": "fds-engine 평가 요청 누계",
+          "gridPos": { "h": 8, "w": 6, "x": 18, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(fds_evaluated_total)" }
+          ],
+          "fieldConfig": { "defaults": {}, "overrides": [] }
+        }
+      ]
+    }
+  # 2) Kubernetes Workload — S10 (Worker Drain 중 재스케줄·거래 지속)
+  k8s-workload.json: |
+    {
+      "uid": "fds-k8s-workload",
+      "title": "Kubernetes Workload",
+      "tags": ["fds", "demo", "S10"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "time": { "from": "now-30m", "to": "now" },
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "fds ns Deployment 가용 replica",
+          "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "kube_deployment_status_replicas_available{namespace=\"fds\"}", "legendFormat": "{{deployment}} avail" },
+            { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "kube_deployment_spec_replicas{namespace=\"fds\"}", "legendFormat": "{{deployment}} desired" }
+          ],
+          "fieldConfig": { "defaults": {}, "overrides": [] }
+        },
+        {
+          "type": "timeseries",
+          "title": "fds ns 파드 재시작 누계",
+          "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (pod) (kube_pod_container_status_restarts_total{namespace=\"fds\"})", "legendFormat": "{{pod}}" }
+          ],
+          "fieldConfig": { "defaults": {}, "overrides": [] }
+        },
+        {
+          "type": "stat",
+          "title": "fds ns 파드 수 (정상상태 9)",
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "count(kube_pod_info{namespace=\"fds\"})" }
+          ],
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" },
+            "thresholds": { "mode": "absolute", "steps": [
+              { "value": null, "color": "green" }, { "value": 10, "color": "red" } ] } }, "overrides": [] }
+        },
+        {
+          "type": "timeseries",
+          "title": "transaction-api 컨테이너 CPU (cadvisor)",
+          "gridPos": { "h": 8, "w": 16, "x": 8, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"fds\",pod=~\"transaction-api.*\"}[2m]))", "legendFormat": "{{pod}}" }
+          ],
+          "fieldConfig": { "defaults": {}, "overrides": [] }
+        }
+      ]
+    }
+  # 3) Target Health / 관측 신뢰성 — S8
+  target-health.json: |
+    {
+      "uid": "fds-target-health",
+      "title": "Target Health / 관측 신뢰성",
+      "tags": ["fds", "demo", "S8"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "time": { "from": "now-30m", "to": "now" },
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "up (job 별) — S8 : 타깃 중지 시 0 으로",
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "up", "legendFormat": "{{job}} / {{instance}}" }
+          ],
+          "fieldConfig": { "defaults": { "min": 0, "max": 1,
+            "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15 } }, "overrides": [] }
+        },
+        {
+          "type": "table",
+          "title": "현재 Firing 알림",
+          "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "ALERTS{alertstate=\"firing\"}", "format": "table", "instant": true }
+          ],
+          "fieldConfig": { "defaults": {}, "overrides": [] }
+        },
+        {
+          "type": "timeseries",
+          "title": "scrape 소요시간 (job 별)",
+          "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "scrape_duration_seconds", "legendFormat": "{{job}}" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+        }
+      ]
+    }

@@ -29,6 +29,27 @@ data:
       - job_name: 'kube-state-metrics'
         static_configs:
           - targets: ['kube-state-metrics.monitoring-api.svc.cluster.local:8080']
+
+      # --- A4 (시나리오 v1.4 §2) : kubelet(10250) scrape 타깃 ---
+      # edge01 단일 노드 k3s → static target 로 단순화. SA 토큰(자동 마운트)으로 인증.
+      # RBAC: prometheus-rbac.yaml (ServiceAccount prometheus + ClusterRole nodes/metrics).
+      # 네트워크: allow-prometheus-egress-kubelet.yaml (fds ns egress → .50:10250).
+      # 실 6노드: static targets 를 .105/.107/.108:10250 로 교체하거나 kubernetes_sd(role: node) 로 전환.
+      - job_name: 'kubelet'
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true      # k3s kubelet 자가서명. 실 클러스터는 CA 지정 권장.
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        static_configs:
+          - targets: ['10.1.93.50:10250']
+      - job_name: 'kubelet-cadvisor'
+        scheme: https
+        metrics_path: /metrics/cadvisor
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        static_configs:
+          - targets: ['10.1.93.50:10250']
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -45,6 +66,8 @@ spec:
       labels:
         app: prometheus
     spec:
+      # A4: kubelet scrape 인증용. default SA 로는 nodes/metrics 권한이 없다.
+      serviceAccountName: prometheus
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
@@ -54,6 +77,7 @@ spec:
           image: prom/prometheus:latest
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--web.enable-lifecycle"   # curl -X POST /-/reload 로 룰/설정 재적용
           ports:
             - containerPort: 9090
           securityContext:

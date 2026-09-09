@@ -1,0 +1,21 @@
+# A4 보조 — fds ns 는 default-deny egress 이므로 Prometheus → kubelet(10250) 경로를 명시 허용.
+# 실 6노드 전환 시 ipBlock 을 각 노드(.102~.105/.107/.108)로 교체하거나
+# namespaceSelector 기반으로 재작성한다. (기존 allow-prometheus-egress-node-exporter.yaml 과 동일 패턴)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-egress-kubelet
+  namespace: fds
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.1.93.50/32
+      ports:
+        - protocol: TCP
+          port: 10250

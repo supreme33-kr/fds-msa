@@ -1,0 +1,36 @@
+# A4 보조 — Prometheus 가 kubelet(10250) /metrics 를 스크레이프하기 위한 최소 RBAC.
+# [BL] §8 "RBAC / Namespace-scoped ServiceAccount" 원칙에 맞춰 nodes 리소스는 get 만.
+# 신규 통제가 아니라, 이미 P0(§11.6-1 kubelet scrape)인 관측 대상을 배포하기 위한 권한.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: fds
+automountServiceAccountToken: true   # kubelet bearer_token_file 로 사용
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-kubelet-scrape
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/metrics
+      - nodes/stats
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-kubelet-scrape
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-kubelet-scrape
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: fds

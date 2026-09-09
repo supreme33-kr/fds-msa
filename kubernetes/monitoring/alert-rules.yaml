@@ -4,15 +4,77 @@ metadata:
   name: prometheus-alert-rules
   namespace: fds
 data:
+  # A2 (시나리오 v1.4 §2) — [BL] §11.3 지표 기반 룰.
+  # 임계값(threshold)은 전부 NOT VERIFIED — 베이스라인 트래픽 관측 후 팀이 확정.
+  #   아래 상수 위치: FDSDetectionBurst.expr 의 `> 20`, UnexpectedPodInFdsNs.expr 의 `> 9`.
+  # Prometheus 는 rule 파일을 자동 reload 하지 않는다 → 이 ConfigMap 변경 후
+  #   `curl -X POST http://<prom>:9090/-/reload`  또는  `kubectl -n fds rollout restart deploy/prometheus`
   alert-rules.yml: |
     groups:
     - name: fds-demo-alerts
       rules:
+
+      # --- 기존: node-exporter (k3s hairpin known-issue, §6 탐지 한계 표에 명시) ---
       - alert: NodeExporterDown
         expr: up{job="node-exporter"} == 0
         for: 30s
         labels:
           severity: warning
+          known_issue: "k3s-hairpin"
         annotations:
           summary: "node-exporter target is down"
-          description: "Prometheus cannot scrape node-exporter (known hairpin issue on edge01 single-node k3s)."
+          description: "edge01 단일 노드 k3s hairpin 로 DOWN(A6). 실 6노드(.105/.107/.108:9100)에서는 정석 타깃."
+
+      # --- S8: 관측 신뢰성 — 스크레이프 타깃/의존서비스 다운 ---
+      # node-exporter 는 위 전용 룰로 처리하므로 여기서는 제외(중복 방지 + 정직 표기).
+      - alert: TargetDown
+        expr: up{job=~"transaction-api|fds-engine|kube-state-metrics|kubelet"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "scrape target {{ $labels.job }} is down"
+          description: "{{ $labels.job }} ({{ $labels.instance }}) 를 1분 이상 스크레이프하지 못함. S8 실행 A."
+
+      # --- S7: 이상거래 급증 (FDS Rule + App Metrics) ★핵심 ---
+      # fds_detected_total{rule_id} 는 fds-engine 이 노출(Counter). R02(고액, threshold 3,000,000 KRW)
+      # 이 시연에서 가장 안정적으로 트리거된다. 5분 증가분 기준.
+      # threshold `20` = NOT VERIFIED. 베이스라인 트래픽 확인 전까지 임시값.
+      - alert: FDSDetectionBurst
+        expr: sum(increase(fds_detected_total{rule_id="R02"}[5m])) > 20
+        for: 1m
+        labels:
+          severity: warning
+          rule_id: "R02"
+        annotations:
+          summary: "FDS R02 탐지 급증 (5m 증가분 > 20, threshold NOT VERIFIED)"
+          description: "한 계정 고액·연속 거래 패턴 의심. 거래는 201 유지(차단 없음) — 탐지·기록만."
+
+      # 참고용(경고 아님): 전체 룰 탐지 급증도 같이 관측하고 싶을 때. 기본은 R02 만 alert.
+      - alert: FDSDetectionBurstAnyRule
+        expr: sum by (rule_id) (increase(fds_detected_total[5m])) > 30
+        for: 2m
+        labels:
+          severity: info
+        annotations:
+          summary: "FDS {{ $labels.rule_id }} 탐지 급증 (참고, threshold NOT VERIFIED)"
+          description: "rule_id 별 5분 증가분 > 30. R01/R04/R07 포함 관측용."
+
+      # --- S1 보조: fds ns 예상 외 파드 (횡이동/비승인 워크로드 흔적) ---
+      # [BL] §11.3 에 NetworkPolicy drop 지표가 없음(= P1-MON-02). 파드 개수 기반의 coarse heuristic.
+      #   1차 expr : kube_pod_labels 의 label_app 이 있을 때(ksm --metric-labels-allowlist=pods=[app] 필요)
+      #   대체 expr(주석): 라벨 못 쓰면 개수만 → expr: count(kube_pod_info{namespace="fds"}) > 9
+      # 정상 정상상태: transaction-api(3)+fds-engine(3)+prometheus(1)+grafana(1)+alertmanager(1) = 9
+      - alert: UnexpectedPodInFdsNs
+        expr: |
+          count(
+            kube_pod_info{namespace="fds"}
+            unless on (namespace, pod)
+            kube_pod_labels{namespace="fds", label_app=~"transaction-api|fds-engine|prometheus|grafana|alertmanager"}
+          ) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "fds namespace 에 승인되지 않은 파드 존재"
+          description: "예상 app 라벨(transaction-api/fds-engine/prometheus/grafana/alertmanager) 이 아닌 파드가 fds ns 에서 관측됨. S1 횡이동 시나리오 보조 신호."
