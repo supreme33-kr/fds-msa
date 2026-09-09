@@ -102,12 +102,18 @@ data:
           "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } }
         },
         {
-          "id": 6, "type": "table", "title": "현재 Firing 알림 (Alertmanager 로 전달됨)",
+          "id": 6, "type": "table", "title": "현재 Firing 알림 + 지속시간 (Alertmanager 로 전달됨)",
           "gridPos": { "h": 8, "w": 10, "x": 14, "y": 4 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "ALERTS{alertstate=\"firing\"}", "format": "table", "instant": true } ],
-          "fieldConfig": { "defaults": {}, "overrides": [] },
-          "options": { "showHeader": true }
+          "description": "Value = 알림이 active(pending 진입)된 시각으로부터 경과. ALERTS 메트릭 자체엔 시작시각이 없어 ALERTS_FOR_STATE(activeAt) 로 계산.",
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "time() - ALERTS_FOR_STATE{alertstate=\"firing\"}", "format": "table", "instant": true } ],
+          "fieldConfig": { "defaults": {}, "overrides": [
+            { "matcher": { "id": "byName", "options": "Time" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
+            { "matcher": { "id": "byName", "options": "__name__" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
+            { "matcher": { "id": "byName", "options": "alertstate" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
+            { "matcher": { "id": "byName", "options": "Value" }, "properties": [ { "id": "unit", "value": "dtdurations" }, { "id": "displayName", "value": "firing 지속" } ] }
+          ] },
+          "options": { "showHeader": true, "sortBy": [ { "displayName": "firing 지속", "desc": true } ] }
         },
         {
           "id": 7, "type": "timeseries", "title": "FDS 탐지 누계 — rule_id별 (S7a, max_over_time 2m)",
@@ -129,8 +135,16 @@ data:
           "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
         },
         {
-          "id": 9, "type": "timeseries", "title": "fds ns Deployment — 가용 / 목표 replica (S10 drain 시 관찰)",
+          "id": 9, "type": "state-timeline", "title": "알림 발생 타임라인 — firing 구간 (언제 떴다 사라졌나)",
           "gridPos": { "h": 7, "w": 24, "x": 0, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "ALERTS{alertstate=\"firing\"}", "legendFormat": "{{alertname}}" } ],
+          "fieldConfig": { "defaults": { "custom": { "fillOpacity": 80, "lineWidth": 0 }, "color": { "mode": "fixed", "fixedColor": "red" }, "mappings": [ { "type": "value", "options": { "1": { "text": "firing" } } } ] }, "overrides": [] },
+          "options": { "mergeValues": true, "showValue": "never", "rowHeight": 0.9, "legend": { "displayMode": "list", "placement": "bottom" } }
+        },
+        {
+          "id": 10, "type": "timeseries", "title": "fds ns Deployment — 가용 / 목표 replica (S10 drain 시 관찰)",
+          "gridPos": { "h": 7, "w": 24, "x": 0, "y": 27 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "targets": [
             { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "kube_deployment_status_replicas_available{namespace=\"fds\"}", "legendFormat": "{{deployment}} avail" },
@@ -317,15 +331,20 @@ data:
         {
           "id": 2,
           "type": "table",
-          "title": "현재 Firing 알림",
+          "title": "현재 Firing 알림 + 지속시간",
           "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "targets": [
             { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "ALERTS{alertstate=\"firing\"}", "format": "table", "instant": true }
+              "expr": "time() - ALERTS_FOR_STATE{alertstate=\"firing\"}", "format": "table", "instant": true }
           ],
-          "fieldConfig": { "defaults": {}, "overrides": [] },
-          "options": { "showHeader": true }
+          "fieldConfig": { "defaults": {}, "overrides": [
+            { "matcher": { "id": "byName", "options": "Time" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
+            { "matcher": { "id": "byName", "options": "__name__" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
+            { "matcher": { "id": "byName", "options": "alertstate" }, "properties": [ { "id": "custom.hidden", "value": true } ] },
+            { "matcher": { "id": "byName", "options": "Value" }, "properties": [ { "id": "unit", "value": "dtdurations" }, { "id": "displayName", "value": "firing 지속" } ] }
+          ] },
+          "options": { "showHeader": true, "sortBy": [ { "displayName": "firing 지속", "desc": true } ] }
         },
         {
           "id": 3,
