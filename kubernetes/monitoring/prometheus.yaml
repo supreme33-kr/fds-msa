@@ -15,19 +15,20 @@ data:
         - static_configs:
             - targets: ['alertmanager.fds.svc.cluster.local:9093']
     scrape_configs:
-      # transaction-api / fds-engine 는 replica 3 → ClusterIP 스크레이프 시 라운드로빈으로
-      # 카운터가 파드마다 다른 값으로 튀어 increase()/rate() 가 리셋으로 오인된다.
-      # headless Service(-metrics) + dns_sd 로 파드별(instance=<podIP>:port) 스크레이프.
+      # transaction-api / fds-engine :
+      #  이상적으로는 파드 단위(headless Service + dns_sd, headless-services.yaml) 스크레이프여야
+      #  replica 3 라운드로빈에 의한 카운터 리셋 오인(increase()/rate() 영구 부풀음)을 피한다.
+      #  ⚠️ 그러나 E-K3S(edge01 단일 노드)에서는 Prometheus pod → 앱 pod IP 직결이
+      #     "No route to host" 로 실패한다(node-exporter/kubelet 과 동일 계열의 pod→비Service 경로 제약).
+      #     → E-K3S 에서는 ClusterIP Service 로 스크레이프한다. 이 경우 fds-optional-hardening
+      #       그룹(FDSDetectionBurst 등)의 rate/increase 는 신뢰하지 않는다(정직 발표 항목).
+      #  ✅ E-CANON(정본 다중 노드)에서는 dns_sd(headless) 또는 endpoints SD 로 파드 단위 전환.
       - job_name: 'transaction-api'
-        dns_sd_configs:
-          - names: ['transaction-api-metrics.fds.svc.cluster.local']
-            type: A
-            port: 8000
+        static_configs:
+          - targets: ['transaction-api.fds.svc.cluster.local:80']
       - job_name: 'fds-engine'
-        dns_sd_configs:
-          - names: ['fds-engine-metrics.fds.svc.cluster.local']
-            type: A
-            port: 8001
+        static_configs:
+          - targets: ['fds-engine.fds.svc.cluster.local:8001']
 
       - job_name: 'node-exporter'
         static_configs:

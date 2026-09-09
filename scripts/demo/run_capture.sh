@@ -78,12 +78,10 @@ fi
 echo; echo "===== Phase 4 : 지표 스냅샷 + 리포트 ====="
 {
   echo "# captured: $(date -Iseconds)"
-  echo; echo "## rule_id 별 fds_detected_total 5m 증가분 (파드 단위 스크레이프 전제)"
+  echo; echo "## rule_id 별 fds_detected_total 5m 증가분 (E-K3S: ClusterIP 라운드로빈 노이즈, 참고만)"
   promq_raw 'sum%20by%20(rule_id)%20(increase(fds_detected_total%5B5m%5D))'
-  echo; echo; echo "## 거래 저장 성공 rate(1m)"; promq_raw 'sum(rate(transaction_save_success_total%5B1m%5D))'
+  echo; echo; echo "## 거래 저장 성공 rate(1m) (E-K3S: 참고만)"; promq_raw 'sum(rate(transaction_save_success_total%5B1m%5D))'
   echo; echo; echo "## up (job / instance 별)"; promq_raw 'up'
-  echo; echo; echo "## transaction-api / fds-engine target instance 수 (파드 단위면 각 3)"
-  promq_raw 'count%20by%20(job)%20(up%7Bjob%3D~%22transaction-api%7Cfds-engine%22%7D)'
 } | tee "${out}/40_metrics.txt"
 
 ################################################################################

@@ -9,7 +9,10 @@
 #   가 파드별 target(instance=<podIP>:port) 로 스크레이프 → 시계열이 파드별 단조증가 →
 #   sum(rate(...)) 정상.
 #
-# 실 6-Node 이관 시에도 동일 패턴(headless + dns_sd 또는 endpoints SD) 사용.
+# ⚠️ E-K3S(edge01 단일 노드)에서는 Prometheus pod → 앱 pod IP 직결이 "No route to host" 로
+#    실패한다(pod→비Service 경로 제약, node-exporter/kubelet 과 동일 계열). 따라서 E-K3S 의
+#    prometheus.yml 은 이 headless 대신 ClusterIP Service 로 스크레이프한다.
+# ✅ E-CANON(정본 다중 노드)에서 이 headless + dns_sd 로 전환한다. 이 파일은 그때를 위해 유지.
 ---
 apiVersion: v1
 kind: Service

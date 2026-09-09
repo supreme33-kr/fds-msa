@@ -22,7 +22,7 @@
 | **S7b** P0 Test Alert | `p0-test-alert.yaml` | `FDSMonitoringPipelineTest` — 기본 비활성(`vector(1)==0`). 시연 시 `s7b_test_alert.sh` 가 `==1`로 전환 |
 | **A3** Grafana 3 뷰 + PVC | `grafana.yaml`, `grafana-dashboards.yaml` | emptyDir→PVC `grafana-data`(local-path 1Gi). `Application & FDS` / `Kubernetes Workload` / **`Node & Monitoring Health`** |
 | **A4** kubelet scrape | `prometheus.yaml`, `prometheus-rbac.yaml`, `allow-prometheus-egress-kubelet.yaml` | `kubelet`/`kubelet-cadvisor` static job + SA `prometheus` + ClusterRole `nodes/metrics` + egress NP. `--web.enable-lifecycle` |
-| **스크레이프 픽스** | `prometheus.yaml`, `headless-services.yaml` | transaction-api/fds-engine 를 **headless Service + dns_sd 로 파드 단위** 스크레이프. ClusterIP 라운드로빈이 3 replica 카운터를 리셋으로 오인 → `increase()`/`rate()` 영구 부풀음 방지 |
+| **스크레이프 (E-K3S)** | `prometheus.yaml` | transaction-api/fds-engine = **ClusterIP Service** 스크레이프. 파드 IP 직결은 E-K3S 에서 "No route to host"(node-exporter/kubelet 과 동일 계열). 라운드로빈으로 `fds-optional-hardening` 그룹의 rate/increase 는 E-K3S 에서 신뢰 불가 — 정직 발표. `headless-services.yaml` 는 **E-CANON 전환용**으로 유지 |
 | A2 보조 | `kube-state-metrics.yaml` | `--metric-labels-allowlist=pods=[app],deployments=[app]` |
 
 **손대지 않은 것:** A5 monitor01 Watchdog(IF-06B `BLOCKED`, 범위 밖), node-exporter/kubelet DOWN
@@ -35,7 +35,7 @@
 ```bash
 cd fds-msa
 kubectl apply -f kubernetes/monitoring/prometheus-rbac.yaml
-kubectl apply -f kubernetes/monitoring/headless-services.yaml
+# headless-services.yaml 는 E-CANON 전환용 — E-K3S 배포에는 불필요(적용해도 무해)
 kubectl apply -f kubernetes/monitoring/alertmanager-config.yaml \
   -f kubernetes/monitoring/alert-rules.yaml \
   -f kubernetes/monitoring/p0-test-alert.yaml \
@@ -52,18 +52,16 @@ kubectl -n monitoring-api rollout restart deploy/kube-state-metrics
 
 ```bash
 kubectl -n fds get pvc grafana-data                              # Bound
-kubectl -n fds get svc transaction-api-metrics fds-engine-metrics # CLUSTER-IP = None
 kubectl -n fds exec deploy/prometheus -- wget -qO- localhost:9090/api/v1/rules | grep -o '"name":"[^"]*"'
-kubectl -n fds exec deploy/prometheus -- wget -qO- 'localhost:9090/api/v1/query?query=count%20by%20(job)%20(up%7Bjob%3D~%22transaction-api%7Cfds-engine%22%7D)'
-#   → transaction-api / fds-engine 각각 instance 3 (파드 단위 스크레이프 확인)
+kubectl -n fds exec deploy/prometheus -- wget -qO- 'localhost:9090/api/v1/query?query=up%7Bjob%3D~%22transaction-api%7Cfds-engine%22%7D'
+#   → E-K3S: 각 job ClusterIP instance 1, up=1
 ```
 
 | 확인 | 기대 | 결과 |
 |---|---|---|
 | grafana-data PVC Bound | Bound | `NOT RUN` |
-| `*-metrics` headless svc | ClusterIP None | `NOT RUN` |
-| transaction-api/fds-engine target instance 수 | 각 3 | `NOT RUN` |
-| 룰 그룹 2개 로드 | core + optional-hardening | `NOT RUN` |
+| transaction-api/fds-engine `up` | 1 (ClusterIP) | `NOT RUN` |
+| 룰 그룹 3개 로드 | p0-test + core + optional-hardening | `NOT RUN` |
 | kubelet 타깃 | E-K3S 에선 down (hairpin, 예상) | `NOT RUN` |
 | Grafana FDS 폴더 뷰 3개 | provisioned | `NOT RUN` |
 
@@ -84,7 +82,7 @@ BASE_URL=http://10.1.93.50 COUNT=40 ./scripts/demo/s7a_app_txn.sh --with-metrics
 | POST 응답 | 201 (전건) | `NOT RUN` |
 | 응답 fds_rules 트리거 집계 | fixture 에 맞는 rule_id | `NOT RUN` |
 | transactions 저장 (raw SELECT) | 저장됨 | `NOT RUN` |
-| rule_id 별 5m 증가분 (파드 단위) | 정상 반영 | `NOT RUN` |
+| rule_id 별 5m 증가분 | E-K3S 는 라운드로빈 노이즈 (참고만) | `NOT RUN` |
 
 ---
 

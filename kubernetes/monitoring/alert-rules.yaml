@@ -54,11 +54,12 @@ data:
     - name: fds-optional-hardening
       # v1.5 §1 : 아래는 "선택적 고도화 후보". 기존 P0 Test Alert(S7b) 와 별개이며
       #           채택 전까지 임계값은 NOT VERIFIED. 발표에서 P0 로 소개하지 않는다.
+      # ⚠️ E-K3S 제약: transaction-api/fds-engine 를 ClusterIP 로 스크레이프하므로(파드 IP 직결
+      #    불가) replica 3 라운드로빈에 의해 increase()/rate() 가 부풀어 이 그룹은
+      #    E-K3S 에서 신뢰할 수 없다. E-CANON 에서 파드 단위 스크레이프로 전환 후 유효.
       rules:
 
       # 한 계정 연속·반복 거래로 특정 Rule 탐지가 급증하는 패턴.
-      # 전제: transaction-api/fds-engine 를 파드 단위(headless + dns_sd)로 스크레이프해야
-      #       increase()/rate() 가 정상 동작한다 (ClusterIP 라운드로빈 시 카운터 리셋 오인).
       # rule_id 는 응답의 fds_rules[].triggered 로 확인하고 특정하지 않는다. 예시로 R02 고정.
       - alert: FDSDetectionBurst
         expr: sum(increase(fds_detected_total{rule_id="R02"}[5m])) > 20
