@@ -4,11 +4,34 @@ metadata:
   name: alertmanager-config
   namespace: fds
 data:
+  # A1 (시나리오 v1.4 §2) — "화면 수신 1개".
+  # [BL] §11.2 P0 = Firing/Resolved 화면 수신·그룹화 뿐. IF-24(메일/SMS/메신저) = RETIRED.
+  # → 외부 integration(email/slack/webhook) 을 일부러 넣지 않는다. 알림 도달 범위 = Alertmanager UI + Grafana.
+  # config reload: Alertmanager 는 파일 변경 시 자동 reload(inotify) 하므로 rollout restart 불필요.
   alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+
     route:
-      receiver: 'default'
+      receiver: 'screen-only'
+      # alertname + severity 로 묶어서 UI 한 줄로 본다
+      group_by: ['alertname', 'severity']
       group_wait: 10s
       group_interval: 30s
       repeat_interval: 1h
+      routes:
+        # 시연 중 노이즈가 큰 known-issue 는 별도 그룹으로만 분리(억제하지는 않음 — 정직 표기)
+        - matchers:
+            - alertname = "NodeExporterDown"
+          receiver: 'screen-only'
+          group_wait: 0s
+
+    # 같은 alertname 에 대해 critical 이 firing 이면 warning 은 UI에서 억제
+    inhibit_rules:
+      - source_matchers: [ 'severity = "critical"' ]
+        target_matchers: [ 'severity = "warning"' ]
+        equal: ['alertname']
+
     receivers:
-    - name: 'default'
+      # integration 없음 = 알림이 화면(Alertmanager UI)에만 뜬다. 의도된 설계.
+      - name: 'screen-only'

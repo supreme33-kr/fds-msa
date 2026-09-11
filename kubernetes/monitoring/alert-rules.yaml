@@ -4,15 +4,50 @@ metadata:
   name: prometheus-alert-rules
   namespace: fds
 data:
+  # 코어 알림 규칙 — 시나리오 v1.5 정렬. 타깃/스크레이프 건강. S8(TC-TARGET) 대상.
+  #
+  #  S7b(TC-ALERT) P0 Test Alert  → p0-test-alert.yaml
+  #  선택적 고도화 후보(FDSDetectionBurst 등) → alert-rules-optional.yaml
+  #    (E-CANON 전용. E-K3S 에는 적용하지 않는다 — ClusterIP 라운드로빈으로 상시 오탐.)
+  #
+  # Prometheus 는 rule 파일을 자동 reload 하지 않는다 → ConfigMap 변경 후
+  #   kubectl -n fds exec deploy/prometheus -- wget -qO- --post-data='' localhost:9090/-/reload
   alert-rules.yml: |
     groups:
-    - name: fds-demo-alerts
+    - name: fds-core-observability
       rules:
+
+      # node-exporter : k3s 단일노드 hairpin 로 상시 DOWN. 실 6노드(.105/.107/.108:9100)에서 정석.
       - alert: NodeExporterDown
         expr: up{job="node-exporter"} == 0
         for: 30s
         labels:
           severity: warning
+          known_issue: "k3s-hairpin"
+          kr: "노드 지표 수집 실패 (k3s 단일노드 한계)"
         annotations:
           summary: "node-exporter target is down"
-          description: "Prometheus cannot scrape node-exporter (known hairpin issue on edge01 single-node k3s)."
+          description: "edge01 단일 노드 k3s hairpin 로 DOWN. 실 6노드에서는 정석 타깃. S8 대상 아님."
+
+      # kubelet(10250) : pod→노드 자기 IP 도달 제약(No route to host). node-exporter 와 동일 원인.
+      - alert: KubeletScrapeDownK3s
+        expr: up{job=~"kubelet|kubelet-cadvisor"} == 0
+        for: 2m
+        labels:
+          severity: info
+          known_issue: "k3s-hairpin"
+          kr: "kubelet 지표 수집 실패 (k3s 단일노드 한계)"
+        annotations:
+          summary: "kubelet scrape down (edge01 k3s 단일노드 hairpin)"
+          description: "pod→노드 IP(:10250) 도달 제약. 실 6노드(.102~.105/.107/.108:10250)에서는 정석. S8 대상 아님."
+
+      # S8 / TC-TARGET : 스크레이프 타깃 다운. node-exporter/kubelet 은 위 known-issue 로 분리 → 제외.
+      - alert: TargetDown
+        expr: up{job=~"transaction-api|fds-engine|kube-state-metrics"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          kr: "관측 대상 다운"
+        annotations:
+          summary: "scrape target {{ $labels.job }} is down"
+          description: "{{ $labels.job }} ({{ $labels.instance }}) 를 1분 이상 스크레이프하지 못함."

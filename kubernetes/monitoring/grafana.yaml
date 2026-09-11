@@ -8,6 +8,7 @@ data:
     apiVersion: 1
     datasources:
       - name: Prometheus
+        uid: prometheus            # A3: 대시보드 JSON 이 이 uid 로 참조
         type: prometheus
         access: proxy
         url: http://prometheus:9090
@@ -20,6 +21,8 @@ metadata:
   namespace: fds
 spec:
   replicas: 1
+  strategy:
+    type: Recreate            # A3: PVC(RWO) 재부착 충돌 방지
   selector:
     matchLabels:
       app: grafana
@@ -57,9 +60,16 @@ spec:
               mountPath: /var/lib/grafana/plugins
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
+            # A3: 대시보드 provisioning (provider 정의 + 대시보드 JSON)
+            - name: dashboards-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /etc/grafana/dashboards      # PVC(/var/lib/grafana) 하위 중첩 마운트 회피
       volumes:
         - name: data
-          emptyDir: {}
+          # A3: emptyDir → PVC. Pod 재기동/재스케줄에도 대시보드 편집·주석 유지.
+          persistentVolumeClaim:
+            claimName: grafana-data
         - name: tmp
           emptyDir: {}
         - name: plugins
@@ -67,6 +77,12 @@ spec:
         - name: datasources
           configMap:
             name: grafana-datasources
+        - name: dashboards-provider
+          configMap:
+            name: grafana-dashboards-provider
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
 ---
 apiVersion: v1
 kind: Service

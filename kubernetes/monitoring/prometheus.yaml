@@ -8,18 +8,29 @@ data:
     global:
       scrape_interval: 15s
     rule_files:
-      - /etc/prometheus/rules/alert-rules.yml
+      - /etc/prometheus/rules/*.yml       # prometheus-alert-rules CM (core)
+      - /etc/prometheus/rules-p0/*.yml    # prometheus-p0-test-alert CM (S7b)
+      - /etc/prometheus/rules-opt/*.yml   # prometheus-alert-rules-optional CM (E-CANON 전용, optional)
     alerting:
       alertmanagers:
         - static_configs:
             - targets: ['alertmanager.fds.svc.cluster.local:9093']
     scrape_configs:
+      # transaction-api / fds-engine :
+      #  이상적으로는 파드 단위(headless Service + dns_sd, headless-services.yaml) 스크레이프여야
+      #  replica 3 라운드로빈에 의한 카운터 리셋 오인(increase()/rate() 영구 부풀음)을 피한다.
+      #  ⚠️ 그러나 E-K3S(edge01 단일 노드)에서는 Prometheus pod → 앱 pod IP 직결이
+      #     "No route to host" 로 실패한다(node-exporter/kubelet 과 동일 계열의 pod→비Service 경로 제약).
+      #     → E-K3S 에서는 ClusterIP Service 로 스크레이프한다. 이 경우 fds-optional-hardening
+      #       그룹(FDSDetectionBurst 등)의 rate/increase 는 신뢰하지 않는다(정직 발표 항목).
+      #  ✅ E-CANON(정본 다중 노드)에서는 dns_sd(headless) 또는 endpoints SD 로 파드 단위 전환.
       - job_name: 'transaction-api'
         static_configs:
           - targets: ['transaction-api.fds.svc.cluster.local:80']
       - job_name: 'fds-engine'
         static_configs:
           - targets: ['fds-engine.fds.svc.cluster.local:8001']
+
       - job_name: 'node-exporter'
         static_configs:
           - targets: ['10.1.93.50:9100']
@@ -29,6 +40,32 @@ data:
       - job_name: 'kube-state-metrics'
         static_configs:
           - targets: ['kube-state-metrics.monitoring-api.svc.cluster.local:8080']
+        # ksm 는 replica 1 → ClusterIP 스크레이프로도 라운드로빈 문제 없음.
+
+      # --- A4 : kubelet(10250) scrape 타깃 ---
+      # RBAC: prometheus-rbac.yaml (ServiceAccount prometheus + ClusterRole nodes/metrics).
+      # 네트워크: allow-prometheus-egress-kubelet.yaml (fds ns egress → .50:10250).
+      #
+      # ⚠️ edge01 단일 노드 k3s 에서는 이 타깃이 DOWN 이다("No route to host" — pod 가 자기
+      #    노드 IP :10250 으로 도달 불가). node-exporter(:9100) 와 동일한 hairpin 제약이며
+      #    KubeletScrapeDownK3s(info) 로만 알리고 S8/TargetDown 대상에서는 제외한다.
+      # ✅ 실 6-Node 클러스터: Prometheus 가 monitor01(외부 VM) 에 위치 → hairpin 없음.
+      #    static targets 를 .102~.105/.107/.108:10250 로 교체하거나 kubernetes_sd(role: node) 전환.
+      - job_name: 'kubelet'
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        static_configs:
+          - targets: ['10.1.93.50:10250']
+      - job_name: 'kubelet-cadvisor'
+        scheme: https
+        metrics_path: /metrics/cadvisor
+        tls_config:
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        static_configs:
+          - targets: ['10.1.93.50:10250']
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -45,6 +82,8 @@ spec:
       labels:
         app: prometheus
     spec:
+      # A4: kubelet scrape 인증용. default SA 로는 nodes/metrics 권한이 없다.
+      serviceAccountName: prometheus
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
@@ -54,6 +93,7 @@ spec:
           image: prom/prometheus:latest
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--web.enable-lifecycle"   # curl -X POST /-/reload 로 룰/설정 재적용
           ports:
             - containerPort: 9090
           securityContext:
@@ -70,6 +110,10 @@ spec:
               mountPath: /prometheus
             - name: alert-rules
               mountPath: /etc/prometheus/rules/
+            - name: p0-test-alert
+              mountPath: /etc/prometheus/rules-p0/
+            - name: alert-rules-optional
+              mountPath: /etc/prometheus/rules-opt/
       volumes:
         - name: config
           configMap:
@@ -79,6 +123,13 @@ spec:
         - name: alert-rules
           configMap:
             name: prometheus-alert-rules
+        - name: p0-test-alert
+          configMap:
+            name: prometheus-p0-test-alert
+        - name: alert-rules-optional
+          configMap:
+            name: prometheus-alert-rules-optional
+            optional: true          # 없어도 기동 (E-K3S 는 이 CM 을 적용하지 않음)
 ---
 apiVersion: v1
 kind: Service

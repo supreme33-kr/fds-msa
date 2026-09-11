@@ -1,0 +1,374 @@
+# A3 — Grafana PVC + provisioned 대시보드 3종. 시나리오 v1.5 §1 뷰 이름.
+# provider: /etc/grafana/provisioning/dashboards/provider.yaml → path /etc/grafana/dashboards
+# 대시보드 JSON: ConfigMap prometheus... 아니라 grafana-dashboards CM 의 각 키가
+#   /etc/grafana/dashboards/<key> 로 마운트되어 파일 provider 가 읽는다.
+#
+# E-K3S 주의: 앱은 ClusterIP 스크레이프(파드 IP 직결 불가)라 3 replica 라운드로빈으로
+#   fds_detected_total / transaction_save_* 카운터가 튄다 → rate()/increase() 대신
+#   max_over_time(...[2m]) 로 단조증가에 가깝게 표시한다. E-CANON 파드 단위 전환 시 rate 로 교체.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: fds
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-provider
+  namespace: fds
+data:
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'fds'
+        orgId: 1
+        folder: 'FDS'
+        type: file
+        disableDeletion: false
+        allowUiUpdates: true
+        updateIntervalSeconds: 30
+        options:
+          path: /etc/grafana/dashboards
+          foldersFromFilesStructure: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: fds
+data:
+  fds-overview.json: |
+    {
+      "id": null,
+      "uid": "fds-overview",
+      "title": "FDS Overview (발표용 · 한 화면)",
+      "tags": ["fds", "demo", "overview"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "5s",
+      "editable": true,
+      "time": { "from": "now-20m", "to": "now" },
+      "timepicker": {},
+      "templating": { "list": [] },
+      "annotations": { "list": [] },
+      "panels": [
+        {
+          "id": 1, "type": "stat", "title": "타깃 UP",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "count(up == 1)" } ],
+          "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+        },
+        {
+          "id": 2, "type": "stat", "title": "타깃 DOWN (k3s hairpin 포함)",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "count(up == 0)" } ],
+          "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [ { "value": null, "color": "yellow" }, { "value": 4, "color": "red" } ] }, "color": { "mode": "thresholds" } }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+        },
+        {
+          "id": 3, "type": "stat", "title": "fds ns 파드 수 (정상 9)",
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "count(kube_pod_info{namespace=\"fds\"})" } ],
+          "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [ { "value": null, "color": "green" }, { "value": 10, "color": "red" } ] }, "color": { "mode": "thresholds" } }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+        },
+        {
+          "id": 4, "type": "stat", "title": "fds-engine 평가 요청 누계",
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max_over_time(fds_evaluated_total[2m])" } ],
+          "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" }
+        },
+        {
+          "id": 5, "type": "timeseries", "title": "스크레이프 타깃 up (job / instance별) — S8",
+          "gridPos": { "h": 8, "w": 14, "x": 0, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "up", "legendFormat": "{{job}} / {{instance}}" } ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15, "lineWidth": 2 }, "min": 0, "max": 1, "unit": "short" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 6, "type": "table", "title": "현재 Firing 알림 + 지속시간 (Alertmanager 로 전달됨)",
+          "gridPos": { "h": 8, "w": 10, "x": 14, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "description": "Value = 알림이 active(pending 진입)된 시각으로부터 경과. ALERTS 메트릭 자체엔 시작시각이 없어 ALERTS_FOR_STATE(activeAt) 로 계산.",
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "time() - ALERTS_FOR_STATE{alertstate=\"firing\", kr!=\"\"}", "format": "table", "instant": true } ],
+          "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "alertstate": true, "alertname": true, "job": true, "instance": true, "known_issue": true, "purpose": true, "rule_id": true, "tier": true, "container": true, "endpoint": true, "namespace": true, "pod": true, "service": true }, "renameByName": { "kr": "알림", "severity": "심각도", "Value": "firing 지속" }, "indexByName": { "kr": 0, "severity": 1, "Value": 2 } } } ],
+          "fieldConfig": { "defaults": {}, "overrides": [
+            { "matcher": { "id": "byName", "options": "firing 지속" }, "properties": [ { "id": "unit", "value": "dtdurations" } ] }
+          ] },
+          "options": { "showHeader": true, "sortBy": [ { "displayName": "firing 지속", "desc": true } ] }
+        },
+        {
+          "id": 7, "type": "timeseries", "title": "FDS 탐지 누계 — rule_id별 (S7a, max_over_time 2m)",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max_over_time(fds_detected_total[2m])", "legendFormat": "{{rule_id}}" } ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 }, "unit": "short" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 8, "type": "timeseries", "title": "거래 저장 성공 / 실패 누계",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max_over_time(transaction_save_success_total[2m])", "legendFormat": "success" },
+            { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max_over_time(transaction_save_failure_total[2m])", "legendFormat": "failure" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "short" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 9, "type": "state-timeline", "title": "알림 발생 타임라인 — firing 구간 (언제 떴다 사라졌나)",
+          "gridPos": { "h": 7, "w": 24, "x": 0, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "ALERTS{alertstate=\"firing\", kr!=\"\"}", "legendFormat": "{{kr}}" } ],
+          "fieldConfig": { "defaults": { "custom": { "fillOpacity": 80, "lineWidth": 0 }, "color": { "mode": "fixed", "fixedColor": "red" }, "mappings": [ { "type": "value", "options": { "1": { "text": "발생 중" } } } ] }, "overrides": [] },
+          "options": { "mergeValues": true, "showValue": "never", "rowHeight": 0.9, "legend": { "displayMode": "list", "placement": "bottom" } }
+        },
+        {
+          "id": 10, "type": "timeseries", "title": "fds ns Deployment — 가용 / 목표 replica (S10 drain 시 관찰)",
+          "gridPos": { "h": 7, "w": 24, "x": 0, "y": 27 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "kube_deployment_status_replicas_available{namespace=\"fds\"}", "legendFormat": "{{deployment}} avail" },
+            { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "kube_deployment_spec_replicas{namespace=\"fds\"}", "legendFormat": "{{deployment}} desired" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 8 }, "unit": "short", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } }
+        }
+      ]
+    }
+  application-fds.json: |
+    {
+      "id": null,
+      "uid": "fds-app-fds",
+      "title": "Application & FDS",
+      "tags": ["fds", "demo"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "editable": true,
+      "time": { "from": "now-30m", "to": "now" },
+      "timepicker": {},
+      "templating": { "list": [] },
+      "annotations": { "list": [] },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "FDS 탐지 누계 — rule_id별 (max_over_time 2m, E-K3S 라운드로빈 보정)",
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "max_over_time(fds_detected_total[2m])", "legendFormat": "{{rule_id}}" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 }, "unit": "short" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "거래 저장 성공 / 실패 누계",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "max_over_time(transaction_save_success_total[2m])", "legendFormat": "success" },
+            { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "max_over_time(transaction_save_failure_total[2m])", "legendFormat": "failure" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 }, "unit": "short" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "fds-engine 평가 요청 누계",
+          "gridPos": { "h": 8, "w": 6, "x": 12, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "max_over_time(fds_evaluated_total[2m])" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "source_ip 누락 누계",
+          "gridPos": { "h": 8, "w": 6, "x": 18, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "max_over_time(missing_client_ip_total[2m])" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [ { "value": null, "color": "green" }, { "value": 1, "color": "yellow" } ] }, "color": { "mode": "thresholds" } }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+        }
+      ]
+    }
+  kubernetes-workload.json: |
+    {
+      "id": null,
+      "uid": "fds-k8s-workload",
+      "title": "Kubernetes Workload",
+      "tags": ["fds", "demo"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "editable": true,
+      "time": { "from": "now-30m", "to": "now" },
+      "timepicker": {},
+      "templating": { "list": [] },
+      "annotations": { "list": [] },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "fds ns Deployment — 가용 / 목표 replica",
+          "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "kube_deployment_status_replicas_available{namespace=\"fds\"}", "legendFormat": "{{deployment}} avail" },
+            { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "kube_deployment_spec_replicas{namespace=\"fds\"}", "legendFormat": "{{deployment}} desired" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 8 }, "unit": "short", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "fds ns 파드 재시작 누계",
+          "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (pod) (kube_pod_container_status_restarts_total{namespace=\"fds\"})", "legendFormat": "{{pod}}" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 8 }, "unit": "short" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "fds ns 파드 수 (정상 9)",
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "count(kube_pod_info{namespace=\"fds\"})" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [ { "value": null, "color": "green" }, { "value": 10, "color": "red" } ] }, "color": { "mode": "thresholds" } }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+        },
+        {
+          "id": 4,
+          "type": "table",
+          "title": "fds / monitoring-api 파드 (kube_pod_info)",
+          "gridPos": { "h": 8, "w": 16, "x": 8, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "kube_pod_info{namespace=~\"fds|monitoring-api\"}", "format": "table", "instant": true }
+          ],
+          "fieldConfig": { "defaults": {}, "overrides": [] },
+          "options": { "showHeader": true }
+        }
+      ]
+    }
+  node-monitoring-health.json: |
+    {
+      "id": null,
+      "uid": "fds-node-monitoring-health",
+      "title": "Node & Monitoring Health",
+      "tags": ["fds", "demo", "s8"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "editable": true,
+      "time": { "from": "now-30m", "to": "now" },
+      "timepicker": {},
+      "templating": { "list": [] },
+      "annotations": { "list": [] },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "스크레이프 타깃 up (job / instance별) — S8: 중지 시 0",
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "up", "legendFormat": "{{job}} / {{instance}}" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15, "lineWidth": 2 }, "min": 0, "max": 1, "unit": "short" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 2,
+          "type": "table",
+          "title": "현재 Firing 알림 + 지속시간",
+          "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "time() - ALERTS_FOR_STATE{alertstate=\"firing\", kr!=\"\"}", "format": "table", "instant": true }
+          ],
+          "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "alertstate": true, "alertname": true, "job": true, "instance": true, "known_issue": true, "purpose": true, "rule_id": true, "tier": true, "container": true, "endpoint": true, "namespace": true, "pod": true, "service": true }, "renameByName": { "kr": "알림", "severity": "심각도", "Value": "firing 지속" }, "indexByName": { "kr": 0, "severity": 1, "Value": 2 } } } ],
+          "fieldConfig": { "defaults": {}, "overrides": [
+            { "matcher": { "id": "byName", "options": "firing 지속" }, "properties": [ { "id": "unit", "value": "dtdurations" } ] }
+          ] },
+          "options": { "showHeader": true, "sortBy": [ { "displayName": "firing 지속", "desc": true } ] }
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "스크레이프 소요시간 (job별)",
+          "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "scrape_duration_seconds", "legendFormat": "{{job}}" }
+          ],
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 8 }, "unit": "s" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "타깃 상태 (UP / DOWN)",
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "count(up == 1)", "legendFormat": "UP" },
+            { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "count(up == 0)", "legendFormat": "DOWN (k3s hairpin 포함)" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "textMode": "value_and_name", "orientation": "horizontal" }
+        }
+      ]
+    }
